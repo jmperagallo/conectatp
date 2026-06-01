@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState, useRef } from "react";
-import { Upload, Plus, Trash2, Save, Mail, School, ShieldCheck } from "lucide-react";
+import React, { useState } from "react";
+import { createBrowserClient } from "@supabase/ssr";
+import { useRouter } from "next/navigation";
+import { School, ClipboardList, Mail, ShieldAlert, Plus, X } from "lucide-react";
 import Header from "@/app/components/Header";
-import { SECTORES_TP } from "@/app/lib/especialidades";
 
 const COLORES = {
   azul: "#1a365d",
@@ -14,68 +15,138 @@ const COLORES = {
   grisClaro: "#64748b"
 };
 
-interface Encargado {
-  id: string;
-  nombre: string;
-  correo: string;
-  especialidad: string;
-}
+export default function AdministrarColegios() {
+  const router = useRouter();
+  const [saving, setSaving] = useState(false);
 
-export default function PerfilColegioPage() {
-  // Simulamos datos que ya vienen del Paso 1 (RBD)
-  const [datosMineduc] = useState({
-    rbd: "9421",
-    nombre: "Liceo Bicentenario Técnico Profesional Industrial",
-    comuna: "La Calera",
-    region: "Valparaíso"
-  });
+  // Estados del Formulario (Liceo)
+  const [rbd, setRbd] = useState("");
+  const [nombre, setNombre] = useState("");
+  const [comuna, setComuna] = useState("");
+  const [region, setRegion] = useState("");
+  const [dependencia, setDependencia] = useState("Servicio Local (SLEP)");
 
-  // Campos adicionales que el Admin debe completar
-  const [telefono, setTelefono] = useState("");
-  const [web, setWeb] = useState("");
-  const [logo, setLogo] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // Estados para la gestión de correos (Lista Blanca)
+  const [correoInput, setCorreoInput] = useState("");
+  const [listaCorreos, setListaCorreos] = useState<string[]>([]);
 
-  // Lista dinámica de Jefes de Especialidad / Encargados de Práctica
-  const [encargados, setEncargados] = useState<Encargado[]>([
-    { id: "1", nombre: "", correo: "", especialidad: "" }
-  ]);
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
 
-  // Manejo de la subida del logo (Previsualización local)
-  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      setLogo(URL.createObjectURL(file));
-    }
-  };
-
-  // Agregar un nuevo encargado a la lista
-  const agregarEncargado = () => {
-    const nuevo: Encargado = {
-      id: Date.now().toString(),
-      nombre: "",
-      correo: "",
-      especialidad: ""
-    };
-    setEncargados([...encargados, nuevo]);
-  };
-
-  // Eliminar un encargado de la lista
-  const eliminarEncargado = (id: string) => {
-    if (encargados.length === 1) return; // Al menos debe quedar uno
-    setEncargados(encargados.filter(enc => enc.id !== id));
-  };
-
-  // Actualizar los campos de un encargado específico
-  const actualizarEncargado = (id: string, campo: keyof Encargado, valor: string) => {
-    setEncargados(encargados.map(enc => enc.id === id ? { ...enc, [campo]: valor } : enc));
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
+  // Agregar correo al listado temporal (Evita burbujeo del formulario)
+  const handleAgregarCorreo = (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("Datos de la Institución:", { telefono, web, logo });
-    console.log("Equipo de Especialidades:", encargados);
-    alert("🚀 Perfil institucional guardado. Se han enviado las invitaciones por correo a los Jefes de Especialidad.");
+    e.stopPropagation();
+    
+    const email = correoInput.trim().toLowerCase();
+    if (!email) return;
+    
+    if (listaCorreos.includes(email)) {
+      alert("Este correo ya está en la lista por registrar.");
+      return;
+    }
+    setListaCorreos([...listaCorreos, email]);
+    setCorreoInput("");
+  };
+
+  // Quitar correo del listado temporal
+  const handleQuitarCorreo = (correoAQuitar: string) => {
+    setListaCorreos(listaCorreos.filter((c) => c !== correoAQuitar));
+  };
+
+  // Guardar en la Base de Datos (VERSIÓN DIAGNÓSTICO EXTREMO)
+  const handleRegistrarEcosistema = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!rbd.trim() || !nombre.trim()) {
+      alert("Por favor, completa los datos obligatorios (RBD y Nombre).");
+      return;
+    }
+
+    if (listaCorreos.length === 0) {
+      alert("Debes añadir al menos un correo con el botón '+ Añadir' antes de registrar.");
+      return;
+    }
+
+    setSaving(true);
+    let liceoId = null;
+
+    try {
+      // 1. Intentar insertar o buscar el liceo en la tabla 'liceos'
+      const { data: nuevoLiceo, error: errLiceo } = await supabase
+        .from("liceos")
+        .insert({
+          rbd: rbd.trim(),
+          nombre: nombre.trim().toUpperCase(),
+          comuna: comuna.trim(),
+          region: region.trim()
+        })
+        .select("id")
+        .single();
+
+      if (errLiceo) {
+        if (errLiceo.code === "23505") {
+          const { data: liceoExistente } = await supabase
+            .from("liceos")
+            .select("id")
+            .eq("rbd", rbd.trim())
+            .single();
+          liceoId = liceoExistente?.id;
+        } else {
+          throw new Error(`ERROR AL INSERTAR LICEO: ${errLiceo.message}`);
+        }
+      } else if (nuevoLiceo) {
+        liceoId = nuevoLiceo.id;
+      }
+
+      if (!liceoId) throw new Error("Fallo crítico: No se pudo obtener o recuperar el ID del establecimiento.");
+
+      // 2. Preparar el arreglo de objetos para la lista blanca
+      const payloadsListaBlanca = listaCorreos.map((correo) => ({
+        correo: correo,
+        rol: "institucion", // Asegúrate de que coincida con tu tipo ENUM de Postgres
+        id_liceo: liceoId
+      }));
+
+      // 3. Forzar inserción y capturar la respuesta explícita
+      const respuestaSupabase = await supabase
+        .from("lista_blanca")
+        .insert(payloadsListaBlanca)
+        .select();
+
+      // 4. Ventana de análisis en caliente
+      if (respuestaSupabase.error) {
+        alert(
+          `🚨 FALLO DETECTADO EN SUPABASE 🚨\n\n` +
+          `Código Postgres: ${respuestaSupabase.error.code}\n` +
+          `Mensaje: ${respuestaSupabase.error.message}\n` +
+          `Detalles técnicos: ${respuestaSupabase.error.details || "Ninguno"}\n\n` +
+          `💡 Nota: Si el error menciona un "invalid input value for enum", debes revisar cómo escribiste el rol.`
+        );
+      } else {
+        alert(
+          `✅ ¡ÉXITO TOTAL EN LA BASE DE DATOS! ✅\n\n` +
+          `Se registraron correctamente los datos en 'lista_blanca'.\n` +
+          `Respuesta devuelta: ${JSON.stringify(respuestaSupabase.data, null, 2)}`
+        );
+        
+        // Limpiar formulario tras el éxito confirmado
+        setRbd("");
+        setNombre("");
+        setComuna("");
+        setRegion("");
+        setListaCorreos([]);
+        
+        router.push("/dashboard");
+      }
+
+    } catch (error: any) {
+      alert(`💥 ERROR EXCEPCIONAL DEL CÓDIGO:\n${error.message}`);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -83,124 +154,112 @@ export default function PerfilColegioPage() {
       <Header />
 
       <main style={{ flex: 1, display: "flex", justifyContent: "center", padding: "40px 24px" }}>
-        <form onSubmit={handleSubmit} style={{ width: "100%", maxWidth: "900px", display: "flex", flexDirection: "column", gap: "30px" }}>
+        <form onSubmit={handleRegistrarEcosistema} style={{ width: "100%", maxWidth: "750px", display: "flex", flexDirection: "column", gap: "24px" }}>
           
-          {/* CABECERA DE BIENVENIDA (Usuario autenticado por Gmail) */}
-          <div style={{ backgroundColor: "white", borderRadius: "24px", padding: "30px", border: `1px solid ${COLORES.borde}`, boxShadow: "0 4px 6px rgba(0,0,0,0.02)", display: "flex", alignItems: "center", gap: "20px", flexWrap: "wrap" }}>
-            <div style={{ backgroundColor: "#eff6ff", padding: "15px", borderRadius: "16px", width: "56px", height: "56px", display: "flex", alignItems: "center", justifyContent: "center", color: COLORES.azul, boxSizing: "border-box" }}>
-              <School size={30} />
-            </div>
-            <div style={{ flex: 1 }}>
-              <span style={{ fontSize: "12px", color: COLORES.naranja, fontWeight: 700, textTransform: "uppercase", letterSpacing: "1px", display: "flex", alignItems: "center", gap: "6px" }}>
-                <ShieldCheck size={14} /> Administrador de Plataforma Verificado
-              </span>
-              <h1 style={{ fontSize: "22px", fontWeight: 800, color: COLORES.texto, margin: "4px 0 0 0" }}>{datosMineduc.nombre}</h1>
-              <p style={{ fontSize: "14px", color: COLORES.grisClaro, margin: "2px 0 0 0" }}>RBD {datosMineduc.rbd} • {datosMineduc.comuna}, Región de {datosMineduc.region}</p>
-            </div>
+          <div style={{ backgroundColor: "#fff7ed", borderRadius: "16px", padding: "20px", border: "1px solid #ffedd5", display: "flex", gap: "14px", alignItems: "center" }}>
+            <ShieldAlert size={24} color={COLORES.naranja} style={{ flexShrink: 0 }} />
+            <p style={{ fontSize: "14px", color: "#9a3412", margin: 0, lineHeight: "1.4" }}>
+              <strong>Panel Super Root Inteligente:</strong> Si ingresas un RBD existente, el sistema recuperará su enlace para asociar los correos sin generar errores de duplicidad.
+            </p>
           </div>
 
-          {/* SECCIÓN 1: DETALLES INSTITUCIONALES Y LOGO */}
-          <div style={{ backgroundColor: "white", borderRadius: "24px", padding: "40px", border: `1px solid ${COLORES.borde}`, boxShadow: "0 10px 25px rgba(0,0,0,0.03)", display: "flex", flexDirection: "column", gap: "24px" }}>
-            <h2 style={{ fontSize: "16px", fontWeight: 700, color: COLORES.azul, textTransform: "uppercase", letterSpacing: "0.5px", margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
-              <div style={{ width: "6px", height: "6px", backgroundColor: COLORES.naranja, borderRadius: "50%" }}></div>
-              1. Información Complementaria y Logo
+          {/* Sección 1: Datos del Establecimiento */}
+          <div style={{ backgroundColor: "white", borderRadius: "24px", padding: "30px", border: `1px solid ${COLORES.borde}`, boxShadow: "0 4px 10px rgba(0,0,0,0.02)" }}>
+            <h2 style={{ fontSize: "16px", fontWeight: 700, color: COLORES.azul, margin: "0 0 20px 0", display: "flex", alignItems: "center", gap: "8px", textTransform: "uppercase" }}>
+              <School size={18} color={COLORES.naranja} /> 1. Datos del Establecimiento
             </h2>
-
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "24px", alignItems: "center" }}>
-              
-              {/* SUBIDA DEL LOGO INTERACTIVO */}
-              <div style={{ display: "flex", flexDirection: "column", gap: "8px", alignItems: "center", justifyContent: "center", border: `2px dashed ${COLORES.borde}`, borderRadius: "20px", padding: "20px", height: "160px", cursor: "pointer", backgroundColor: "#fafafa", boxSizing: "border-box" }} onClick={() => fileInputRef.current?.click()}>
-                <input type="file" ref={fileInputRef} onChange={handleLogoChange} accept="image/*" style={{ display: "none" }} />
-                {logo ? (
-                  <img src={logo} alt="Logo preview" style={{ maxHeight: "120px", maxWidth: "100%", objectFit: "contain", borderRadius: "10px" }} />
-                ) : (
-                  <>
-                    <Upload size={28} color={COLORES.grisClaro} />
-                    <span style={{ fontSize: "14px", fontWeight: 600, color: COLORES.texto }}>Subir Logo Institucional</span>
-                    <span style={{ fontSize: "11px", color: COLORES.grisClaro }}>Formatos PNG o JPG (Máx 2MB)</span>
-                  </>
-                )}
-              </div>
-
-              {/* CAMPOS DE TEXTO */}
-              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                  <label style={{ fontSize: "14px", fontWeight: 600, color: COLORES.texto }}>Teléfono de Contacto</label>
-                  <input type="tel" required placeholder="Ej: +56 9 1234 5678" style={inputStyle} value={telefono} onChange={(e) => setTelefono(e.target.value)} />
+            
+            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: "16px" }}>
+                <div>
+                  <label style={labelStyle}>RBD Mineduc *</label>
+                  <input type="text" required placeholder="Ej: 9421" style={inputStyle} value={rbd} onChange={(e) => setRbd(e.target.value)} />
                 </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                  <label style={{ fontSize: "14px", fontWeight: 600, color: COLORES.texto }}>Sitio Web Oficial (Opcional)</label>
-                  <input type="url" placeholder="Ej: www.tucolegio.cl" style={inputStyle} value={web} onChange={(e) => setWeb(e.target.value)} />
+                <div>
+                  <label style={labelStyle}>Nombre del Establecimiento *</label>
+                  <input type="text" required placeholder="Ej: LICEO POLITECNICO" style={inputStyle} value={nombre} onChange={(e) => setNombre(e.target.value)} />
                 </div>
               </div>
 
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+                <div>
+                  <label style={labelStyle}>Comuna</label>
+                  <input type="text" placeholder="Ej: Arica" style={inputStyle} value={comuna} onChange={(e) => setComuna(e.target.value)} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Región</label>
+                  <input type="text" placeholder="Ej: AYP" style={inputStyle} value={region} onChange={(e) => setRegion(e.target.value)} />
+                </div>
+              </div>
+
+              <div>
+                <label style={labelStyle}>Dependencia administrativa</label>
+                <select style={inputStyle} value={dependencia} onChange={(e) => setDependencia(e.target.value)}>
+                  <option>Servicio Local (SLEP)</option>
+                  <option>Municipal</option>
+                  <option>Particular Subvencionado</option>
+                </select>
+              </div>
             </div>
           </div>
 
-          {/* SECCIÓN 2: REGISTRO DINÁMICO DE JEFES DE ESPECIALIDAD */}
-          <div style={{ backgroundColor: "white", borderRadius: "24px", padding: "40px", border: `1px solid ${COLORES.borde}`, boxShadow: "0 10px 25px rgba(0,0,0,0.03)", display: "flex", flexDirection: "column", gap: "24px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
-              <h2 style={{ fontSize: "16px", fontWeight: 700, color: COLORES.azul, textTransform: "uppercase", letterSpacing: "0.5px", margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
-                <div style={{ width: "6px", height: "6px", backgroundColor: COLORES.naranja, borderRadius: "50%" }}></div>
-                2. Configurar Jefes de Especialidad / Prácticas
-              </h2>
-              <button type="button" onClick={agregarEncargado} style={{ display: "flex", alignItems: "center", gap: "6px", backgroundColor: "#eff6ff", color: COLORES.azul, border: "none", padding: "8px 14px", borderRadius: "10px", fontSize: "13px", fontWeight: 700, cursor: "pointer", transition: "all 0.2s" }}>
-                <Plus size={16} /> Agregar Especialidad
+          {/* Sección 2: Administradores */}
+          <div style={{ backgroundColor: "white", borderRadius: "24px", padding: "30px", border: `1px solid ${COLORES.borde}`, boxShadow: "0 4px 10px rgba(0,0,0,0.02)" }}>
+            <h2 style={{ fontSize: "16px", fontWeight: 700, color: COLORES.azul, margin: "0 0 10px 0", display: "flex", alignItems: "center", gap: "8px", textTransform: "uppercase" }}>
+              <Mail size={18} color={COLORES.naranja} /> 2. Administradores del Establecimiento
+            </h2>
+            <p style={{ fontSize: "13px", color: COLORES.grisClaro, margin: "0 0 20px 0" }}>
+              Escribe el correo y presiona obligatoriamente el botón <strong>+ Añadir</strong> para listarlo en la cola de registro.
+            </p>
+            
+            <div style={{ display: "flex", gap: "12px", marginBottom: "20px" }}>
+              <input 
+                type="email" 
+                placeholder="Ej: director@liceo.cl" 
+                style={inputStyle} 
+                value={correoInput} 
+                onChange={(e) => setCorreoInput(e.target.value)}
+              />
+              <button 
+                type="button" 
+                onClick={handleAgregarCorreo} 
+                style={{ backgroundColor: "#c2410c", color: "white", border: "none", padding: "0 24px", borderRadius: "10px", fontWeight: "700", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px" }}
+              >
+                <Plus size={16} /> Añadir
               </button>
             </div>
-            
-            <p style={{ fontSize: "14px", color: COLORES.grisClaro, margin: "0 0 10px 0", lineHeight: "1.5" }}>
-              Registra a los docentes o profesionales líderes de cada rama técnica. Al guardar, recibirán las instrucciones para cargar sus planillas de alumnos listos para hacer la práctica.
-            </p>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-              {encargados.map((encargado) => (
-                <div key={encargado.id} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr)) 45px", gap: "12px", alignItems: "flex-end", padding: "16px", backgroundColor: "#f8fafc", borderRadius: "16px", border: "1px solid #e2e8f0", boxSizing: "border-box" }}>
-                  
-                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                    <label style={subLabelStyle}>Nombre del Encargado</label>
-                    <input type="text" required placeholder="Ej: Juan Pérez" style={inputStyle} value={encargado.nombre} onChange={(e) => actualizarEncargado(encargado.id, "nombre", e.target.value)} />
-                  </div>
-
-                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                    <label style={subLabelStyle}>Correo Institucional</label>
-                    <input type="email" required placeholder="juan.perez@liceo.cl" style={inputStyle} value={encargado.correo} onChange={(e) => actualizarEncargado(encargado.id, "correo", e.target.value)} />
-                  </div>
-
-                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                    <label style={subLabelStyle}>Especialidad / Mención TP</label>
-                    <select 
-                      required 
-                      style={{ ...inputStyle, appearance: "none" }} 
-                      value={encargado.especialidad} 
-                      onChange={(e) => actualizarEncargado(encargado.id, "especialidad", e.target.value)}
-                    >
-                      <option value="">Seleccione especialidad...</option>
-                      {SECTORES_TP.map((sector) => (
-                        <optgroup key={sector.id} label={sector.sector}>
-                          {sector.especialidades.map((esp) => (
-                            <option key={esp.id} value={esp.id}>
-                              {esp.nombre}
-                            </option>
-                          ))}
-                        </optgroup>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* BOTÓN ELIMINAR FILA */}
-                  <button type="button" onClick={() => eliminarEncargado(encargado.id)} disabled={encargados.length === 1} style={{ height: "42px", backgroundColor: "white", border: "1px solid #e2e8f0", borderRadius: "10px", display: "flex", alignItems: "center", justifyContent: "center", color: encargados.length === 1 ? "#cbd5e1" : "#ef4444", cursor: encargados.length === 1 ? "not-allowed" : "pointer", boxSizing: "border-box" }}>
-                    <Trash2 size={18} />
-                  </button>
-
-                </div>
-              ))}
+            {/* Visualizador de correos en cola por registrar */}
+            <div style={{ background: "#f8fafc", borderRadius: "14px", padding: "20px", border: `1px solid ${COLORES.borde}` }}>
+              <span style={{ fontSize: "12px", fontWeight: "700", color: COLORES.grisClaro, display: "block", marginBottom: "12px" }}>
+                CORREOS EN COLA ({listaCorreos.length}):
+              </span>
+              
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
+                {listaCorreos.length === 0 ? (
+                  <span style={{ fontSize: "13px", color: COLORES.grisClaro, fontStyle: "italic" }}>No has añadido correos todavía.</span>
+                ) : (
+                  listaCorreos.map((correo) => (
+                    <div key={correo} style={{ display: "flex", alignItems: "center", gap: "6px", backgroundColor: "white", padding: "6px 12px", borderRadius: "20px", border: `1px solid ${COLORES.borde}`, fontSize: "13px", color: COLORES.texto }}>
+                      {correo}
+                      <X size={14} color="#ef4444" style={{ cursor: "pointer" }} onClick={() => handleQuitarCorreo(correo)} />
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           </div>
 
-          {/* BOTÓN FINAL DE REACCIÓN EN CADENA */}
-          <button type="submit" style={{ backgroundColor: COLORES.azul, color: "white", border: "none", padding: "16px", borderRadius: "16px", fontSize: "16px", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", boxShadow: "0 4px 12px rgba(26, 54, 93, 0.15)", marginTop: "10px" }}>
-            <Mail size={20} /> Guardar Perfil y Enviar Invitaciones al Equipo
+          {/* Botón de Envío */}
+          <button 
+            type="submit" 
+            disabled={saving} 
+            style={{ 
+              backgroundColor: COLORES.azul, color: "white", border: "none", padding: "18px", borderRadius: "14px", fontSize: "16px", fontWeight: 700, cursor: saving ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px"
+            }}
+          >
+            <ClipboardList size={20} />
+            {saving ? "Registrando Ecosistema..." : "Registrar Establecimiento e Invitar Equipo"}
           </button>
 
         </form>
@@ -209,21 +268,5 @@ export default function PerfilColegioPage() {
   );
 }
 
-// Estilos limpios reutilizables
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "11px 14px",
-  border: `1px solid ${COLORES.borde}`,
-  borderRadius: "10px",
-  fontSize: "14px",
-  backgroundColor: "white",
-  outline: "none",
-  color: COLORES.texto,
-  boxSizing: "border-box"
-};
-
-const subLabelStyle: React.CSSProperties = {
-  fontSize: "12px",
-  fontWeight: 700,
-  color: COLORES.grisClaro
-};
+const labelStyle: React.CSSProperties = { fontSize: "13px", fontWeight: 700, color: COLORES.texto, display: "block", marginBottom: "6px" };
+const inputStyle: React.CSSProperties = { width: "100%", padding: "11px 14px", border: `1px solid ${COLORES.borde}`, borderRadius: "10px", fontSize: "14px", backgroundColor: "white", outline: "none", color: COLORES.texto, boxSizing: "border-box" };

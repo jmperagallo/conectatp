@@ -1,0 +1,186 @@
+'use client';
+
+import { createBrowserClient } from '@supabase/ssr';
+import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+
+// Importamos los 4 submódulos modulares (Estilo Includes de PHP)
+import DashboardSuperRoot from '../components/dashboards/DashboardSuperRoot';
+import DashboardCoordinador from '../components/dashboards/DashboardCoordinador';
+import DashboardJefeEspecialidad from '../components/dashboards/DashboardJefeEspecialidad';
+import DashboardEstudiante from '../components/dashboards/DashboardEstudiante';
+
+interface Liceo {
+  id: string;
+  nombre: string;
+  rbd: string;
+  region: string;
+  comuna: string;
+}
+
+export default function DashboardPage() {
+  const router = useRouter();
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [role, setRole] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [liceos, setLiceos] = useState<Liceo[]>([]);
+
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+
+  // Carga inicial de liceos (Solo consumida si el rol es super_root)
+  const fetchLiceos = async () => {
+    const { data, error } = await supabase
+      .from('liceos')
+      .select('*')
+      .order('nombre', { ascending: true });
+    
+    if (!error && data) setLiceos(data);
+  };
+
+  // Acción controlada para eliminar establecimientos desde el panel Super Root
+  const handleEliminarLiceo = async (rbdAEliminar: string, nombreLiceo: string) => {
+    const confirmar = window.confirm(`⚠️ ACCIÓN CONTROLADA (SU)\n\n¿Deseas eliminar permanentemente el liceo "${nombreLiceo}"?`);
+    if (!confirmar) return;
+
+    try {
+      const { error } = await supabase.from('liceos').delete().eq('rbd', rbdAEliminar);
+      if (error) throw error;
+      setLiceos(prev => prev.filter(l => l.rbd !== rbdAEliminar));
+      alert('¡Registro eliminado con éxito!');
+    } catch (err: any) {
+      alert(`Error al eliminar: ${err.message}`);
+    }
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const checkSessionAndRole = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        if (isMounted) router.replace('/login');
+        return;
+      }
+
+      const emailLimpio = session.user.email ? session.user.email.trim().toLowerCase() : '';
+      if (isMounted) setUserEmail(emailLimpio);
+
+      // Regla de oro: Cuenta administradora global de la plataforma
+      if (emailLimpio === 'contacto@conectatp.cl') {
+        if (isMounted) {
+          setRole('super_root');
+          setLoading(false);
+        }
+        await fetchLiceos();
+        return;
+      }
+
+      // Verificación de roles institucionales en la lista blanca
+      try {
+        const { data: perfil, error } = await supabase
+          .from('lista_blanca')
+          .select('rol')
+          .eq('correo', emailLimpio)
+          .maybeSingle();
+
+        if (isMounted) {
+          // Si existe en lista blanca toma su rol ('coordinador' o 'jefe_especialidad'), si no, es estudiante
+          setRole(perfil && !error ? perfil.rol : 'estudiante');
+          setLoading(false);
+        }
+      } catch (err) {
+        if (isMounted) {
+          setRole('estudiante');
+          setLoading(false);
+        }
+      }
+    };
+
+    checkSessionAndRole();
+    return () => { isMounted = false; };
+  }, [supabase, router]);
+
+  const handleLogout = async () => {
+    setLoading(true);
+    await supabase.auth.signOut();
+    router.replace('/login');
+  };
+
+  // Pantalla de carga unificada corporativa
+  if (loading) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc', fontFamily: 'system-ui, sans-serif', gap: '12px' }}>
+        <div style={{ width: '40px', height: '40px', border: '4px solid #e2e8f0', borderTop: '4px solid #1a365d', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+        <p style={{ fontSize: '14px', fontWeight: '600', color: '#1a365d', margin: 0 }}>Cargando Conecta TP...</p>
+        <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ minHeight: '100vh', backgroundColor: '#f1f5f9', fontFamily: 'system-ui, sans-serif', display: 'flex' }}>
+      
+      {/* MENÚ LATERAL COMÚN DE NAVEGACIÓN */}
+      <div style={{ width: '260px', backgroundColor: '#0f172a', color: '#ffffff', display: 'flex', flexDirection: 'column', height: '100vh', position: 'fixed', left: 0, top: 0, borderRight: '1px solid #1e293b' }}>
+        <div style={{ padding: '28px 24px', borderBottom: '1px solid #1e293b' }}>
+          <h2 style={{ margin: 0, fontSize: '22px', fontWeight: '800', color: '#ffffff', letterSpacing: '-0.5px' }}>
+            Conecta<span style={{ color: '#f97316' }}>TP</span>
+          </h2>
+          <div style={{ display: 'inline-block', backgroundColor: 'rgba(249, 115, 22, 0.15)', color: '#fdba74', fontSize: '11px', fontWeight: '700', padding: '4px 8px', borderRadius: '4px', marginTop: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            {role ? role.replace('_', ' ') : 'Cargando...'}
+          </div>
+        </div>
+
+        <div style={{ flex: 1, padding: '24px 16px' }}>
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <li>
+              <a href="#inicio" style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 14px', color: '#ffffff', textDecoration: 'none', borderRadius: '8px', backgroundColor: '#1a365d', fontWeight: '600', fontSize: '14px' }}>
+                <span>🏠</span> Inicio
+              </a>
+            </li>
+          </ul>
+        </div>
+
+        <div style={{ padding: '16px', borderTop: '1px solid #1e293b' }}>
+          <button onClick={handleLogout} style={{ width: '100%', backgroundColor: 'transparent', border: '1px solid #ef4444', color: '#ef4444', padding: '10px', borderRadius: '6px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
+            Cerrar Sesión
+          </button>
+        </div>
+      </div>
+
+      {/* ÁREA DE CONTENIDO PRINCIPAL DINÁMICO (Evaluación del Guardia de Tránsito) */}
+      <div style={{ marginLeft: '260px', padding: '40px', flex: 1, boxSizing: 'border-box' }}>
+        
+        {/* 1. VISTA SUPER ROOT / PLATAFORMA */}
+        {role === 'super_root' && (
+          <DashboardSuperRoot 
+            userEmail={userEmail} 
+            liceos={liceos} 
+            onEliminarLiceo={handleEliminarLiceo} 
+          />
+        )}
+
+        {/* 2. VISTA ADMINISTRADOR COLEGIAL (COORDINADOR) */}
+        {role === 'coordinador' && (
+          <DashboardCoordinador />
+        )}
+
+        {/* 3. VISTA JEFE DE ESPECIALIDAD */}
+        {role === 'jefe_especialidad' && (
+          <DashboardJefeEspecialidad userEmail={userEmail} />
+        )}
+
+        {/* 4. VISTA ESTUDIANTES (O roles no clasificados) */}
+        {role !== 'super_root' && role !== 'coordinador' && role !== 'jefe_especialidad' && (
+          <DashboardEstudiante role={role} />
+        )}
+        
+      </div>
+
+    </div>
+  );
+}
