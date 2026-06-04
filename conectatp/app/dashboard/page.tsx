@@ -88,7 +88,7 @@ export default function DashboardPage() {
           .maybeSingle();
 
         if (isMounted) {
-          // Si existe en lista blanca toma su rol ('coordinador' o 'jefe_especialidad'), si no, es estudiante
+          // Si existe en lista blanca toma su rol, si no, es estudiante
           setRole(perfil && !error ? perfil.rol : 'estudiante');
           setLoading(false);
         }
@@ -152,7 +152,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* ÁREA DE CONTENIDO PRINCIPAL DINÁMICO (Evaluación del Guardia de Tránsito) */}
+      {/* ÁREA DE CONTENIDO PRINCIPAL DINÁMICO */}
       <div style={{ marginLeft: '260px', padding: '40px', flex: 1, boxSizing: 'border-box' }}>
         
         {/* 1. VISTA SUPER ROOT / PLATAFORMA */}
@@ -164,8 +164,8 @@ export default function DashboardPage() {
           />
         )}
 
-        {/* 2. VISTA ADMINISTRADOR COLEGIAL (COORDINADOR) */}
-        {role === 'coordinador' && (
+        {/* 2. VISTA ADMINISTRADOR COLEGIAL / COORDINADOR (Se activa con cualquiera de los dos términos) */}
+        {(role === 'coordinador' || role === 'administrador_liceo') && (
           <DashboardCoordinador />
         )}
 
@@ -174,8 +174,8 @@ export default function DashboardPage() {
           <DashboardJefeEspecialidad userEmail={userEmail} />
         )}
 
-        {/* 4. VISTA ESTUDIANTES (O roles no clasificados) */}
-        {role !== 'super_root' && role !== 'coordinador' && role !== 'jefe_especialidad' && (
+        {/* 4. VISTA ESTUDIANTES (Evitamos que entre administrador_liceo por descarte) */}
+        {role !== 'super_root' && role !== 'coordinador' && role !== 'administrador_liceo' && role !== 'jefe_especialidad' && (
           <DashboardEstudiante role={role} />
         )}
         
