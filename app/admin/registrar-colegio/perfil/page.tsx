@@ -235,7 +235,7 @@ export default function AdministrarColegios() {
     const url = await uploadLogo(file);
     if (url) {
       setLogoUrl(url);
-      setArchivoLogo(file); // Guardamos referencia por si acaso
+      setArchivoLogo(file);
     }
   };
 
@@ -412,7 +412,6 @@ export default function AdministrarColegios() {
       let urlLogoFinal = logoUrl;
       
       if (archivoLogo && !urlLogoFinal) {
-        // Si por alguna razón el archivo existe pero no tenemos URL, intentamos subir de nuevo
         console.log("⚠️ Logo pendiente de subir, intentando ahora...");
         const url = await uploadLogo(archivoLogo);
         if (url) {
@@ -491,7 +490,7 @@ export default function AdministrarColegios() {
             sector: j.sector,
             especialidad: j.especialidad,
             mencion: j.mencion,
-            rol: "institucion",
+            rol: "jefe_especialidad", // ✅ CORREGIDO: antes era "institucion"
             id_liceo: liceoId
           }));
 
