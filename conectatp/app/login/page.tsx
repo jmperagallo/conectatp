@@ -1,12 +1,24 @@
 'use client';
 
-export const dynamic = 'force-dynamic'; // Evita errores de compilación estática en Vercel
-
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter, useSearchParams } from 'next/navigation';
 
+// 1. El componente principal que Next.js expone como página estática segura
 export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f3f4f6', fontFamily: 'sans-serif' }}>
+        <p style={{ color: '#6b7280', fontSize: '16px' }}>Cargando inicio de sesión...</p>
+      </div>
+    }>
+      <LoginFormContent />
+    </Suspense>
+  );
+}
+
+// 2. El contenido real de tu login que consume los parámetros de búsqueda de forma segura
+function LoginFormContent() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -29,7 +41,7 @@ export default function LoginPage() {
     }
   }, [searchParams]);
 
-  // 1. Login tradicional con Correo y Contraseña
+  // Login tradicional con Correo y Contraseña
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -49,7 +61,7 @@ export default function LoginPage() {
     }
   };
 
-  // 2. Login rápido con Google
+  // Login rápido con Google
   const handleGoogleLogin = async () => {
     setLoading(true);
     setErrorMsg(null);
