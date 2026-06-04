@@ -1,6 +1,0 @@
-{
-  "buildCommand": "cd conectatp && npm install && npm run build",
-  "outputDirectory": "conectatp/.next",
-  "installCommand": "cd conectatp && npm install",
-  "framework": "nextjs"
-}
