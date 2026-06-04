@@ -67,6 +67,7 @@ export default function DashboardPage() {
       const emailLimpio = session.user.email ? session.user.email.trim().toLowerCase() : '';
       if (isMounted) setUserEmail(emailLimpio);
 
+      // SUPER ADMIN - cuenta global
       if (emailLimpio === 'contacto@conectatp.cl') {
         if (isMounted) {
           setRole('super_root');
@@ -85,7 +86,7 @@ export default function DashboardPage() {
 
         if (isMounted) {
           if (data && !error) {
-            setRole(data.role || data.rol);
+            setRole(data.rol || data.role);
             const liceoIdDetectado = data.id_liceo || null;
             setIdLiceo(liceoIdDetectado);
 
@@ -98,9 +99,10 @@ export default function DashboardPage() {
                   .eq('id', liceoIdDetectado)
                   .single();
 
-                // Si no hay datos guardados del encargado, se le fuerza a ir a /perfil?id=X
+                // Si no hay datos guardados del encargado, se le fuerza a ir al formulario de perfil
                 if (errCheck || !liceoCheck || !liceoCheck.encargado_nombres) {
-                  router.replace(`/perfil?id=${liceoIdDetectado}`);
+                  // ✅ CORREGIDO: Ruta completa al formulario de perfil
+                  router.replace(`/admin/registrar-colegio/perfil?id=${liceoIdDetectado}`);
                   return;
                 }
               }
@@ -181,7 +183,7 @@ export default function DashboardPage() {
         )}
 
         {role === 'jefe_especialidad' && (
-          <DashboardJefeEspecialidad userEmail={userEmail} />
+          <DashboardJefeEspecialidad userEmail={userEmail} idLiceo={idLiceo} />
         )}
 
         {role !== 'super_root' && role !== 'coordinador' && role !== 'administrador_liceo' && role !== 'jefe_especialidad' && (
