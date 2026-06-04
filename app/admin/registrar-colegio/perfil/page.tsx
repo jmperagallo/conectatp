@@ -1,4 +1,4 @@
-"use client";
+"use client"; // Forzando redeploy
 
 import React, { useState, useEffect, useRef } from "react";
 import { createBrowserClient } from "@supabase/ssr";
