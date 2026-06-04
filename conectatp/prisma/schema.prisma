@@ -1,0 +1,57 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// 1. La Institución TP
+model InstitucionTP {
+  id           String        @id @default(uuid())
+  rbd          Int           @unique
+  nombre       String
+  comuna       String
+  region       String
+  dependencia  String
+  usuarios     Usuario[]     
+  estudiantes  Estudiante[]  
+  createdAt    DateTime      @default(now())
+}
+
+// 2. Usuarios
+model Usuario {
+  id              String        @id @default(uuid())
+  email           String        @unique
+  nombre          String?
+  rol             Rol           @default(JEFE_ESPECIALIDAD)
+  especialidad    String?       
+  institucionId   String
+  institucion     InstitucionTP @relation(fields: [institucionId], references: [id])
+  createdAt       DateTime      @default(now())
+}
+
+// 3. Estudiantes
+model Estudiante {
+  id              String        @id @default(uuid())
+  rut             String        @unique
+  nombre          String
+  email           String        @unique
+  especialidad    String        
+  estadoPractica  EstadoPrac    @default(BUSCANDO)
+  videoUrl        String?       
+  institucionId   String
+  institucion     InstitucionTP @relation(fields: [institucionId], references: [id])
+  createdAt       DateTime      @default(now())
+}
+
+enum Rol {
+  ADMIN_INSTITUCION
+  JEFE_ESPECIALIDAD
+}
+
+enum EstadoPrac {
+  BUSCANDO
+  EN_PRACTICA
+  FINALIZADO
+}
