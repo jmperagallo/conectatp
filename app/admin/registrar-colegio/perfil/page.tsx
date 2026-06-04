@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { ShieldAlert, ClipboardList, Loader2 } from "lucide-react";
 import Header from "@/app/components/Header";
 import { useR2Upload } from "@/hooks/useR2Upload";
-import { COLORES } from "./styles";
+import { COLORES, labelStyle, inputStyle, getInputStyle } from "./styles";
 import DatosEstablecimiento from "./components/DatosEstablecimiento";
 import DatosEncargado from "./components/DatosEncargado";
 import InformacionColegial from "./components/InformacionColegial";
@@ -102,7 +102,7 @@ export default function AdministrarColegios() {
   const [liceoId, setLiceoId] = useState<string | null>(null);
   const [rolUsuario, setRolUsuario] = useState<string | null>(null);
 
-  // Depuración visual
+  // Depuración visual (opcional, si quieres mantener el panel)
   const [debugMessages, setDebugMessages] = useState<string[]>([]);
   const addDebug = (msg: string) => {
     console.log(msg);
@@ -150,11 +150,26 @@ export default function AdministrarColegios() {
   const [jefeCorreo, setJefeCorreo] = useState("");
   const [listaJefes, setListaJefes] = useState<JefeEspecialidad[]>([]);
 
-  // Subida a R2
+  // Subida a R2 (con eliminación automática del logo anterior)
   const { uploadFile: uploadLogo, uploading: uploadingLogo } = useR2Upload({
     folder: "logos",
     maxSizeMB: 2,
-    onSuccess: (url) => {
+    onSuccess: async (url) => {
+      // Si hay un logo anterior y es diferente al nuevo, lo eliminamos de R2
+      if (logoUrl && logoUrl !== url) {
+        try {
+          const oldKey = logoUrl.replace(process.env.NEXT_PUBLIC_R2_PUBLIC_URL + "/", "");
+          addDebug(`🗑️ Eliminando logo anterior: ${oldKey}`);
+          await fetch("/api/r2-delete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ key: oldKey })
+          });
+          addDebug(`✅ Logo anterior eliminado de R2`);
+        } catch (err) {
+          addDebug(`⚠️ No se pudo eliminar el logo anterior: ${err}`);
+        }
+      }
       setLogoUrl(url);
       setPreviewLogo(url);
       addDebug(`✅ Logo subido a R2: ${url}`);
@@ -170,7 +185,7 @@ export default function AdministrarColegios() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  // Funciones auxiliares
+  // Funciones auxiliares (formatRut, telefonos)
   const formatRut = (value: string) => {
     let actual = value.replace(/[^0-9kK]/g, "").toUpperCase();
     if (actual.length <= 1) return actual;
@@ -213,41 +228,28 @@ export default function AdministrarColegios() {
     reader.readAsDataURL(file);
     const url = await uploadLogo(file);
     if (url) {
-      setLogoUrl(url);
       setArchivoLogo(file);
     }
   };
 
-  // Cargar datos iniciales
+  // Cargar datos iniciales (igual que antes, con logs opcionales)
   useEffect(() => {
     async function detectarYBuscarLiceo() {
       try {
         setLoadingSesion(true);
-        addDebug("🔍 Iniciando carga de datos...");
         const { data: { user }, error: authError } = await supabase.auth.getUser();
-        if (authError || !user || !user.email) {
-          addDebug("❌ No se detectó sesión activa.");
-          setLoadingSesion(false);
-          return;
-        }
+        if (authError || !user || !user.email) { setLoadingSesion(false); return; }
         const correoUsuario = user.email.toLowerCase();
         setCorreoPrincipal(correoUsuario);
-        addDebug(`📧 Usuario: ${correoUsuario}`);
-
         const { data: usuarioLista, error: errLista } = await supabase
           .from("lista_blanca")
           .select("id_liceo, rol")
           .eq("correo", correoUsuario)
           .single();
-        if (errLista || !usuarioLista || !usuarioLista.id_liceo) {
-          addDebug("❌ Usuario sin liceo vinculado.");
-          setLoadingSesion(false);
-          return;
-        }
+        if (errLista || !usuarioLista || !usuarioLista.id_liceo) { setLoadingSesion(false); return; }
         const idEncontrado = usuarioLista.id_liceo;
         setLiceoId(idEncontrado);
         setRolUsuario(usuarioLista.rol);
-        addDebug(`🏫 ID Liceo: ${idEncontrado}, Rol: ${usuarioLista.rol}`);
 
         const { data: liceo, error: errLiceo } = await supabase
           .from("liceos")
@@ -259,7 +261,6 @@ export default function AdministrarColegios() {
           setNombre(liceo.nombre || "");
           setComuna(liceo.comuna || "");
           setRegion(liceo.region || "");
-          setDependencia(liceo.dependencia || "Servicio Local (SLEP)");
           setEncargadoNombres(liceo.encargado_nombres || "");
           setEncargadoApPaterno(liceo.encargado_paterno || "");
           setEncargadoApMaterno(liceo.encargado_materno || "");
@@ -277,16 +278,14 @@ export default function AdministrarColegios() {
           setMision(liceo.mision || "");
           setVision(liceo.vision || "");
           setDecretoCooperador(liceo.decreto_cooperador || "");
-          addDebug(`📝 Datos del liceo cargados: RBD=${liceo.rbd}, Nombre=${liceo.nombre}`);
         }
-
         const { data: jefesBD, error: errJefes } = await supabase
           .from("lista_blanca")
           .select("*")
           .eq("id_liceo", idEncontrado)
           .neq("correo", correoUsuario);
         if (jefesBD && !errJefes) {
-          const mapeados: JefeEspecialidad[] = jefesBD.map((j: any) => ({
+          const mapeados: JefeEspecialidad[] = jefesBD.map(j => ({
             id: j.id,
             nombre: j.nombre || "",
             apPaterno: j.apellido_paterno || "",
@@ -297,27 +296,23 @@ export default function AdministrarColegios() {
             correo: j.correo
           }));
           setListaJefes(mapeados);
-          addDebug(`👥 Jefes cargados: ${mapeados.length}`);
         }
-      } catch (error) {
-        addDebug(`❌ Error en carga: ${error}`);
-      } finally {
-        setLoadingSesion(false);
-      }
+      } catch (error) { console.error(error); }
+      finally { setLoadingSesion(false); }
     }
     detectarYBuscarLiceo();
   }, [supabase]);
 
-  // Manejo de jefes
+  // Manejo de jefes (igual)
   const handleAgregarJefe = (e: React.FormEvent) => {
     e.preventDefault();
     const mail = jefeCorreo.trim().toLowerCase();
     if (!jefeNombre.trim() || !jefeApPaterno.trim() || !jefeApMaterno.trim() || !jefeSelectorCompleto || !mail) {
-      alert("Completa todos los campos del Jefe de Especialidad.");
+      alert("Completa todos los campos.");
       return;
     }
     if (listaJefes.some(j => j.correo === mail)) {
-      alert("Este correo ya está registrado.");
+      alert("Correo ya registrado.");
       return;
     }
     const nuevoJefe: JefeEspecialidad = {
@@ -330,7 +325,6 @@ export default function AdministrarColegios() {
       correo: mail
     };
     setListaJefes([...listaJefes, nuevoJefe]);
-    addDebug(`➕ Agregado jefe: ${nuevoJefe.nombre} ${nuevoJefe.apPaterno} (${mail})`);
     setJefeNombre("");
     setJefeApPaterno("");
     setJefeApMaterno("");
@@ -342,42 +336,24 @@ export default function AdministrarColegios() {
   };
 
   const handleQuitarJefe = (correoAQuitar: string) => {
-    if (correoAQuitar === correoPrincipal) {
-      alert("No puedes eliminar al Administrador Principal.");
-      return;
-    }
+    if (correoAQuitar === correoPrincipal) return alert("No puedes eliminar al Administrador Principal.");
     setListaJefes(listaJefes.filter(j => j.correo !== correoAQuitar));
-    addDebug(`🗑️ Eliminado jefe con correo ${correoAQuitar}`);
   };
 
-  // FUNCIÓN PRINCIPAL DE GUARDADO (con logs visuales)
+  // Guardar todo (con la lógica de actualización por ID/RBD y actualización de perfil_completo)
   const handleRegistrarEcosistema = async (e: React.FormEvent) => {
     e.preventDefault();
-    addDebug("🚀 INICIO guardado de ecosistema...");
-    if (encargadoRut && encargadoRut.length < 11) {
-      addDebug("❌ RUT inválido.");
-      alert("Ingresa un RUT válido.");
-      return;
-    }
-    if (rolUsuario !== 'administrador_liceo' && rolUsuario !== 'profesor') {
-      addDebug(`❌ Permiso denegado para rol: ${rolUsuario}`);
-      alert("No tienes permisos para modificar estos datos.");
-      return;
-    }
-    if (!liceoId && !rbd) {
-      addDebug("❌ No se pudo identificar el establecimiento (liceoId y rbd vacíos).");
-      alert("No se pudo identificar el establecimiento.");
-      return;
-    }
+    addDebug("🚀 Guardando ecosistema...");
+    if (encargadoRut && encargadoRut.length < 11) return alert("RUT inválido.");
+    if (rolUsuario !== 'administrador_liceo' && rolUsuario !== 'profesor') return alert("Sin permisos.");
+    if (!liceoId && !rbd) return alert("No se pudo identificar el establecimiento.");
     setSaving(true);
     try {
       let urlLogoFinal = logoUrl;
       if (archivoLogo && !urlLogoFinal) {
-        addDebug("📸 Subiendo logo pendiente...");
         const url = await uploadLogo(archivoLogo);
         if (!url) throw new Error("No se pudo subir el logo");
         urlLogoFinal = url;
-        addDebug(`✅ Logo subido: ${urlLogoFinal}`);
       }
       const payloadLiceo = {
         encargado_nombres: encargadoNombres.trim(),
@@ -398,102 +374,71 @@ export default function AdministrarColegios() {
         decreto_cooperador: decretoCooperador.trim()
       };
 
-      addDebug(`🔍 Valores: liceoId=${liceoId}, rbd=${rbd} (tipo: ${typeof rbd})`);
-      addDebug(`📦 Payload enviado a Supabase: ${JSON.stringify(payloadLiceo).substring(0, 200)}...`);
-
       let actualizado = false;
-      // Intentar por ID
       if (liceoId) {
-        addDebug(`🟢 Actualizando por ID: ${liceoId}`);
-        const { data: updatedById, error: errById } = await supabase
+        const { data, error } = await supabase
           .from("liceos")
           .update(payloadLiceo)
           .eq("id", liceoId)
           .select();
-        if (errById) {
-          addDebug(`❌ Error por ID: ${errById.message}`);
-          throw new Error(`Error por ID: ${errById.message}`);
-        }
-        if (updatedById && updatedById.length > 0) {
-          addDebug(`✅ Actualizado por ID correctamente. Filas afectadas: ${updatedById.length}`);
-          actualizado = true;
-        } else {
-          addDebug(`⚠️ No se encontró registro con ID ${liceoId}`);
-        }
+        if (error) throw new Error(`Error por ID: ${error.message}`);
+        if (data && data.length > 0) actualizado = true;
       }
-
-      // Fallback por RBD
       if (!actualizado && rbd) {
-        addDebug(`🟡 Intentando actualizar por RBD: ${rbd} (como string)`);
-        const { data: updatedByRbd, error: errByRbd } = await supabase
+        const { data, error } = await supabase
           .from("liceos")
           .update(payloadLiceo)
           .eq("rbd", String(rbd))
           .select();
-        if (errByRbd) {
-          addDebug(`❌ Error por RBD: ${errByRbd.message}`);
-          throw new Error(`Error por RBD: ${errByRbd.message}`);
-        }
-        if (updatedByRbd && updatedByRbd.length > 0) {
-          addDebug(`✅ Actualizado por RBD correctamente. Filas afectadas: ${updatedByRbd.length}`);
-          actualizado = true;
-        } else {
-          addDebug(`⚠️ No se encontró registro con RBD ${rbd}`);
-        }
+        if (error) throw new Error(`Error por RBD: ${error.message}`);
+        if (data && data.length > 0) actualizado = true;
+      }
+      if (!actualizado) throw new Error(`No se encontró establecimiento con ID ${liceoId} ni RBD ${rbd}`);
+
+      // Actualizar perfil_completo si el usuario es jefe (rol 'profesor')
+      if (rolUsuario === 'profesor' && liceoId) {
+        await supabase
+          .from("lista_blanca")
+          .update({ perfil_completo: true })
+          .eq("correo", correoPrincipal);
+        addDebug("✅ Perfil de jefe marcado como completo");
       }
 
-      if (!actualizado) {
-        throw new Error(`No se encontró establecimiento con ID ${liceoId} ni con RBD ${rbd}`);
-      }
-
-      // Guardar jefes
       const jefesAGuardar = listaJefes.filter(j => j.correo !== correoPrincipal);
       if (jefesAGuardar.length > 0) {
-        addDebug(`👥 Guardando ${jefesAGuardar.length} jefes...`);
-        const { error: errUpsert } = await supabase
+        const { error } = await supabase
           .from("lista_blanca")
           .upsert(jefesAGuardar.map(j => ({
-            correo: j.correo.trim().toLowerCase(),
-            nombre: j.nombre.trim(),
-            apellido_paterno: j.apPaterno.trim(),
-            apellido_materno: j.apMaterno.trim(),
+            correo: j.correo.toLowerCase(),
+            nombre: j.nombre,
+            apellido_paterno: j.apPaterno,
+            apellido_materno: j.apMaterno,
             sector: j.sector,
             especialidad: j.especialidad,
             mencion: j.mencion,
             rol: "profesor",
             id_liceo: liceoId
           })), { onConflict: 'correo' });
-        if (errUpsert) {
-          addDebug(`❌ Error guardando jefes: ${errUpsert.message}`);
-          throw new Error(`Error guardando jefes: ${errUpsert.message}`);
-        }
-        addDebug(`✅ Jefes guardados correctamente.`);
-      } else {
-        addDebug(`ℹ️ No hay jefes para guardar.`);
+        if (error) throw new Error(`Error guardando jefes: ${error.message}`);
+        addDebug(`✅ ${jefesAGuardar.length} jefes guardados`);
       }
 
-      addDebug(`🎉 Todo guardado exitosamente. Redirigiendo al dashboard...`);
+      addDebug("🎉 Todo guardado exitosamente");
       alert("✅ ¡Ecosistema guardado con éxito!");
       router.push("/dashboard");
     } catch (error: any) {
       addDebug(`💥 ERROR: ${error.message}`);
-      alert(`❌ Error detectado:\n\n${error.message}`);
+      alert(`❌ Error: ${error.message}`);
     } finally {
       setSaving(false);
     }
   };
 
-  // Limpiar mensajes de depuración
+  // Limpiar debug (opcional)
   const clearDebug = () => setDebugMessages([]);
 
   if (loadingSesion) {
-    return (
-      <div style={{ minHeight: "100vh", backgroundColor: COLORES.fondo, display: "flex", alignItems: "center", justifyContent: "center", gap: "12px" }}>
-        <Loader2 size={40} color={COLORES.azul} style={{ animation: "spin 1s linear infinite" }} />
-        <p style={{ color: COLORES.grisClaro, fontWeight: "600" }}>Identificando tu establecimiento...</p>
-        <style>{`@keyframes spin { 100% { transform: rotate(360deg); } }`}</style>
-      </div>
-    );
+    return <div style={{ minHeight: "100vh", backgroundColor: COLORES.fondo, display: "flex", alignItems: "center", justifyContent: "center" }}><Loader2 size={40} color={COLORES.azul} style={{ animation: "spin 1s linear infinite" }} /><style>{`@keyframes spin { 100% { transform: rotate(360deg); } }`}</style></div>;
   }
 
   return (
@@ -501,7 +446,7 @@ export default function AdministrarColegios() {
       <Header />
       <main style={{ flex: 1, display: "flex", justifyContent: "center", padding: "40px 24px" }}>
         <div style={{ width: "100%", maxWidth: "850px", display: "flex", flexDirection: "column", gap: "24px" }}>
-          {/* Panel de depuración visual */}
+          {/* Panel de depuración (opcional) */}
           <div style={{ backgroundColor: "#1e1e2f", color: "#fff", borderRadius: "12px", padding: "12px", fontSize: "12px", fontFamily: "monospace", maxHeight: "200px", overflowY: "auto" }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
               <strong>🐞 DEPURACIÓN EN VIVO</strong>
@@ -509,18 +454,16 @@ export default function AdministrarColegios() {
             </div>
             {debugMessages.length === 0 && <div>Esperando acciones...</div>}
             {debugMessages.map((msg, idx) => (
-              <div key={idx} style={{ borderBottom: "1px solid #334", padding: "4px 0", color: msg.includes("✅") ? "#4ade80" : msg.includes("❌") ? "#f87171" : "#ccc" }}>
-                {msg}
-              </div>
+              <div key={idx} style={{ borderBottom: "1px solid #334", padding: "4px 0", color: msg.includes("✅") ? "#4ade80" : msg.includes("❌") ? "#f87171" : "#ccc" }}>{msg}</div>
             ))}
           </div>
 
           <form onSubmit={handleRegistrarEcosistema} style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-            <div style={{ backgroundColor: "#fff7ed", borderRadius: "16px", padding: "20px", display: "flex", gap: "14px", alignItems: "center" }}>
+            <div style={{ backgroundColor: "#fff7ed", borderRadius: "16px", padding: "20px", display: "flex", gap: "14px" }}>
               <ShieldAlert size={24} color={COLORES.naranja} />
               <p><strong>Ecosistema de Seguridad:</strong> Datos blindados, registra a tu equipo.</p>
             </div>
-            <div style={{ backgroundColor: "#eff6ff", borderRadius: "16px", padding: "20px", display: "flex", gap: "14px", alignItems: "center" }}>
+            <div style={{ backgroundColor: "#eff6ff", borderRadius: "16px", padding: "20px", display: "flex", gap: "14px" }}>
               <ClipboardList size={24} color="#3b82f6" />
               <p><strong>Ficha del Establecimiento:</strong> Información que verán las empresas.</p>
             </div>
@@ -562,7 +505,7 @@ export default function AdministrarColegios() {
               especialidadesData={ESTRUCTURA_TP_CHILE}
             />
             <button type="submit" disabled={saving} style={{ backgroundColor: COLORES.naranja, color: "white", border: "none", padding: "14px 28px", borderRadius: "14px", fontSize: "15px", fontWeight: "700", cursor: saving ? "not-allowed" : "pointer" }}>
-              {saving ? "Guardando cambios institucionales..." : "Guardar Ecosistema Completo"}
+              {saving ? "Guardando..." : "Guardar Ecosistema Completo"}
             </button>
           </form>
         </div>
