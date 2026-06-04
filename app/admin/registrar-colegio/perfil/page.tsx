@@ -396,7 +396,7 @@ export default function AdministrarColegios() {
     }
 
     if (!liceoId) {
-      console.error("❌ [ERROR CRÍTICO] liceoId está vacío o es null. No se puede guardar nada.");
+      console.error("❌ [ERROR CRÍTICO] liceoId está vacío o es null.");
       alert("Error: No se ha detectado el identificador del liceo asociado a tu cuenta.");
       return;
     }
@@ -404,13 +404,8 @@ export default function AdministrarColegios() {
     setSaving(true);
 
     try {
-      // ==========================================
-      // PASO 1: SUBIDA DE LOGO - YA NO ES NECESARIO
-      // El logo ya se subió en handleFileChange a Cloudflare R2
-      // Solo verificamos que tengamos la URL
-      // ==========================================
+      // PASO 1: Logo
       let urlLogoFinal = logoUrl;
-      
       if (archivoLogo && !urlLogoFinal) {
         console.log("⚠️ Logo pendiente de subir, intentando ahora...");
         const url = await uploadLogo(archivoLogo);
@@ -420,119 +415,102 @@ export default function AdministrarColegios() {
           throw new Error("No se pudo subir el logo a Cloudflare R2");
         }
       }
-
       console.log("📸 URL final del logo:", urlLogoFinal);
 
+      // PASO 2: Actualizar liceos
+      console.log("🔍 [DEBUG] isEditing:", isEditing, "liceoId:", liceoId);
+      if (liceoId) {
+        const payloadLiceo = {
+          encargado_nombres: encargadoNombres.trim(),
+          encargado_paterno: encargadoApPaterno.trim(),
+          encargado_materno: encargadoApMaterno.trim(),
+          encargado_rut: encargadoRut.trim(),
+          correo_respaldo: correoRespaldo.trim().toLowerCase(),
+          telefono_contacto: telefonoContacto.trim(),
+          logo_url: urlLogoFinal,
+          telefono_fijo: telefonoFijo.trim(),
+          telefono_movil_colegio: telefonoMovilColegio.trim(),
+          tiene_whatsapp: tieneWhatsapp,
+          direccion_postal: direccionPostal.trim(),
+          nombre_director: nombreDirector.trim(),
+          correo_director: correoDirector.trim().toLowerCase(),
+          mision: mision.trim(),
+          vision: vision.trim(),
+          decreto_cooperador: decretoCooperador.trim()
+        };
 
-      
-      // ==========================================
-// PASO 2: ACTUALIZACIÓN DE TABLA 'LICEOS'
-// ==========================================
-console.log("🔍 [DEBUG] isEditing:", isEditing, "liceoId:", liceoId);
+        console.log("📝 [SUPABASE] Payload a enviar:", payloadLiceo);
 
-if (liceoId) {
-  const payloadLiceo = {
-    encargado_nombres: encargadoNombres.trim(),
-    encargado_paterno: encargadoApPaterno.trim(),
-    encargado_materno: encargadoApMaterno.trim(),
-    encargado_rut: encargadoRut.trim(),
-    correo_respaldo: correoRespaldo.trim().toLowerCase(),
-    telefono_contacto: telefonoContacto.trim(),
-    logo_url: urlLogoFinal, 
-    telefono_fijo: telefonoFijo.trim(),
-    telefono_movil_colegio: telefonoMovilColegio.trim(),
-    tiene_whatsapp: tieneWhatsapp,
-    direccion_postal: direccionPostal.trim(),
-    nombre_director: nombreDirector.trim(),
-    correo_director: correoDirector.trim().toLowerCase(),
-    mision: mision.trim(),
-    vision: vision.trim(),
-    decreto_cooperador: decretoCooperador.trim()
-  };
+        const { data: updatedData, error: errUpdate } = await supabase
+          .from("liceos")
+          .update(payloadLiceo)
+          .eq("id", liceoId)
+          .select();
 
-  console.log("📝 [SUPABASE] Payload a enviar:", payloadLiceo);
-
-  const { data: updatedData, error: errUpdate } = await supabase
-    .from("liceos")
-    .update(payloadLiceo)
-    .eq("id", liceoId)
-    .select();  // 👈 importante: devuelve el registro actualizado
-
-  if (errUpdate) {
-    console.error("❌ [SUPABASE ERROR] Falló actualización:", errUpdate);
-    throw new Error(`Error en tabla liceos: ${errUpdate.message}`);
-  } else {
-    console.log("✅ [SUPABASE] Liceo actualizado correctamente:", updatedData);
-  }
-} else {
-  console.warn("⚠️ No hay liceoId, no se puede actualizar la tabla liceos");
-}
-
-
-        // ==========================================
-        // PASO 3: LIMPIEZA DE JEFES ANTERIORES
-        // ==========================================
-        console.log(`🗑️ [SUPABASE] Limpiando lista_blanca para liceo ${liceoId}, exceptuando al máster: ${correoPrincipal}`);
-        const { error: errDelete } = await supabase
-          .from("lista_blanca")
-          .delete()
-          .eq("id_liceo", liceoId)
-          .neq("correo", correoPrincipal);
-
-        if (errDelete) {
-          console.error("❌ [SUPABASE ERROR] Falló el borrado de la nómina antigua:", errDelete);
-          throw new Error(`Error limpiando lista_blanca: ${errDelete.message}`);
-        }
-        console.log("✅ [SUPABASE] Limpieza de lista_blanca ejecutada sin errores.");
-
-        // ==========================================
-        // PASO 4: INSERCIÓN DE NUEVOS JEFES
-        // ==========================================
-        const jefesAInsertar = listaJefes.filter(j => j.correo !== correoPrincipal);
-        console.log(`👥 [NÓMINA] Jefes totales en interfaz: ${listaJefes.length}. Jefes nuevos/adicionales a insertar: ${jefesAInsertar.length}`);
-
-        if (jefesAInsertar.length > 0) {
-          const payloadsJefes = jefesAInsertar.map(j => ({
-              correo: j.correo.trim().toLowerCase(),
-              nombre: j.nombre.trim(),
-              apellido_paterno: j.apPaterno.trim(),  
-              apellido_materno: j.apMaterno.trim(),  
-              sector: j.sector,
-              especialidad: j.especialidad,
-              mencion: j.mencion,
-              rol: "profesor",  // ✅ Cambiado de "jefe_especialidad" a "profesor"
-              id_liceo: liceoId
-            }));
-
-          console.log("📝 [SUPABASE] Enviando lote de inserción masiva a 'lista_blanca':", payloadsJefes);
-
-          const { error: errInsertJefes, data: dataInsertada } = await supabase
-            .from("lista_blanca")
-            .insert(payloadsJefes)
-            .select();
-
-          if (errInsertJefes) {
-            console.error("❌ [SUPABASE ERROR] Falló la inserción masiva en 'lista_blanca':", errInsertJefes);
-            throw new Error(`Error al insertar la nómina de jefes: ${errInsertJefes.message} (Detalle: ${errInsertJefes.details || 'Ninguno'})`);
-          }
-          console.log("✅ [SUPABASE] Todos los jefes de especialidad fueron indexados con éxito:", dataInsertada);
+        if (errUpdate) {
+          console.error("❌ [SUPABASE ERROR] Falló actualización:", errUpdate);
+          throw new Error(`Error en tabla liceos: ${errUpdate.message}`);
         } else {
-          console.log("ℹ️ [NÓMINA] No hay jefes adicionales para registrar (Lista vacía o solo está el máster).");
+          console.log("✅ [SUPABASE] Liceo actualizado correctamente:", updatedData);
         }
+      } else {
+        console.warn("⚠️ No hay liceoId, no se puede actualizar la tabla liceos");
       }
 
-      alert("✅ ¡Ecosistema e Información de Jefes por Especialidad guardada con éxito!");
-      
-      setTimeout(() => {
-        router.push("/dashboard");
-      }, 1000);
+      // PASO 3: Limpiar jefes anteriores (excepto el máster)
+      console.log(`🗑️ Limpiando lista_blanca para liceo ${liceoId}, excepto ${correoPrincipal}`);
+      const { error: errDelete } = await supabase
+        .from("lista_blanca")
+        .delete()
+        .eq("id_liceo", liceoId)
+        .neq("correo", correoPrincipal);
+
+      if (errDelete) {
+        console.error("❌ Error en limpieza:", errDelete);
+        throw new Error(`Error limpiando lista_blanca: ${errDelete.message}`);
+      }
+      console.log("✅ Limpieza completada");
+
+      // PASO 4: Insertar nuevos jefes
+      const jefesAInsertar = listaJefes.filter(j => j.correo !== correoPrincipal);
+      console.log(`👥 Jefes a insertar: ${jefesAInsertar.length}`);
+      if (jefesAInsertar.length > 0) {
+        const payloadsJefes = jefesAInsertar.map(j => ({
+          correo: j.correo.trim().toLowerCase(),
+          nombre: j.nombre.trim(),
+          apellido_paterno: j.apPaterno.trim(),
+          apellido_materno: j.apMaterno.trim(),
+          sector: j.sector,
+          especialidad: j.especialidad,
+          mencion: j.mencion,
+          rol: "profesor",
+          id_liceo: liceoId
+        }));
+
+        console.log("📝 Insertando jefes:", payloadsJefes);
+        const { error: errInsertJefes, data: dataInsertada } = await supabase
+          .from("lista_blanca")
+          .insert(payloadsJefes)
+          .select();
+
+        if (errInsertJefes) {
+          console.error("❌ Error insertando jefes:", errInsertJefes);
+          throw new Error(`Error al insertar jefes: ${errInsertJefes.message}`);
+        }
+        console.log("✅ Jefes insertados:", dataInsertada);
+      } else {
+        console.log("ℹ️ No hay jefes adicionales para insertar");
+      }
+
+      alert("✅ ¡Ecosistema guardado con éxito!");
+      setTimeout(() => router.push("/dashboard"), 1000);
 
     } catch (error: any) {
-      console.error("💥 [COLAPSO DEL PROCESO] Se detuvo el guardado debido a:", error);
-      alert(`💥 Error detectado:\n\n${error.message}`);
+      console.error("💥 Error:", error);
+      alert(`❌ Error detectado:\n\n${error.message}`);
     } finally {
       setSaving(false);
-      console.log("🏁 [FIN] Proceso de guardado finalizado.");
+      console.log("🏁 Proceso finalizado.");
     }
   };
 
