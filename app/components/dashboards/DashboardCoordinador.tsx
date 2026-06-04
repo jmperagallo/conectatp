@@ -49,7 +49,7 @@ export default function DashboardCoordinador({ userEmail, idLiceo }: DashboardCo
           onClick={handleCompletarPerfil} 
           style={{ backgroundColor: '#f97316', color: 'white', border: 'none', padding: '12px 24px', borderRadius: '8px', fontSize: '14px', fontWeight: '700', cursor: 'pointer', transition: 'background-color 0.2s' }}
         >
-          Completar Perfil Ahora →
+          Completar Mi Perfil Ahora →
         </button>
       </div>
 
