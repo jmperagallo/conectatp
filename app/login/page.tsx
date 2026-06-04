@@ -1,10 +1,24 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter, useSearchParams } from 'next/navigation';
 
+// 1. El componente principal que Next.js expone como página estática segura
 export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f3f4f6', fontFamily: 'sans-serif' }}>
+        <p style={{ color: '#6b7280', fontSize: '16px' }}>Cargando inicio de sesión...</p>
+      </div>
+    }>
+      <LoginFormContent />
+    </Suspense>
+  );
+}
+
+// 2. El contenido real de tu login que consume los parámetros de búsqueda de forma segura
+function LoginFormContent() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -13,13 +27,13 @@ export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // Inicialización correcta para componentes del cliente usando variables de entorno de Next.js
+  // Inicialización de Supabase con variables de entorno
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  // Capturar si el Callback nos devuelve un error de "no autorizado"
+  // Capturar errores devueltos en la URL
   useEffect(() => {
     const errorType = searchParams.get('error');
     if (errorType === 'no-autorizado') {
@@ -27,7 +41,7 @@ export default function LoginPage() {
     }
   }, [searchParams]);
 
-  // 1. Login tradicional con Correo y Contraseña
+  // Login tradicional con Correo y Contraseña
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -47,7 +61,7 @@ export default function LoginPage() {
     }
   };
 
-  // 2. Login rápido con Google
+  // Login rápido con Google
   const handleGoogleLogin = async () => {
     setLoading(true);
     setErrorMsg(null);
@@ -55,7 +69,6 @@ export default function LoginPage() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        // Redirige al puente de seguridad que creamos en el paso anterior
         redirectTo: `${window.location.origin}/auth/callback`,
       },
     });
@@ -76,7 +89,7 @@ export default function LoginPage() {
           <p style={{ color: '#6b7280', margin: 0, fontSize: '14px' }}>Plataforma de Prácticas Profesionales</p>
         </div>
 
-        {/* Alertas de error sanitizadas */}
+        {/* Alertas de error */}
         {errorMsg && (
           <div style={{ backgroundColor: '#fef2f2', borderLeft: '4px solid #ef4444', color: '#991b1b', padding: '12px', borderRadius: '6px', fontSize: '14px', marginBottom: '20px', lineHeight: '1.4' }}>
             {errorMsg}
@@ -95,7 +108,7 @@ export default function LoginPage() {
             <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '14px', boxSizing: 'border-box' }} />
           </div>
 
-          <button type="submit" disabled={loading} style={{ width: '100%', backgroundColor: '#2563eb', color: '#ffffff', padding: '12px', border: 'none', borderRadius: '6px', fontSize: '14px', fontWeight: '600', cursor: 'pointer', transition: 'background-color 0.2s' }}>
+          <button type="submit" disabled={loading} style={{ width: '100%', backgroundColor: '#2563eb', color: '#ffffff', padding: '12px', border: 'none', borderRadius: '6px', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>
             {loading ? 'Cargando...' : 'Iniciar Sesión'}
           </button>
         </form>

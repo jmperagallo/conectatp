@@ -2,27 +2,14 @@
 
 import { useRouter } from 'next/navigation';
 
-// Definimos las propiedades que le envía el Dashboard principal (page.tsx)
-interface DashboardCoordinadorProps {
-  userEmail?: string | null;
-  idLiceo?: string | null;
-}
-
-export default function DashboardCoordinador({ userEmail, idLiceo }: DashboardCoordinadorProps) {
+export default function DashboardCoordinador() {
   const router = useRouter();
 
-  // 🚀 FUNCIÓN CORREGIDA: Apunta a la ruta real de internet según tu estructura de carpetas
-  const handleCompletarPerfil = () => {
-    if (idLiceo) {
-      router.push(`/registrar-colegio/perfil?id=${idLiceo}`);
-    } else {
-      router.push('/registrar-colegio/perfil');
-    }
-  };
+  // 👇 ID temporal para hacer la prueba. Luego lo cambiaremos por el dinámico de Supabase.
+  const liceoId = "1"; 
 
   return (
     <div>
-      {/* CABECERA DEL DASHBOARD */}
       <div style={{ marginBottom: '36px' }}>
         <span style={{ fontSize: '12px', fontWeight: '700', color: '#f97316', textTransform: 'uppercase', letterSpacing: '1px', display: 'block', marginBottom: '4px' }}>
           Panel Institucional
@@ -46,14 +33,14 @@ export default function DashboardCoordinador({ userEmail, idLiceo }: DashboardCo
           </p>
         </div>
         <button 
-          onClick={handleCompletarPerfil} 
+          onClick={() => router.push(`/admin/registrar-colegio/perfil?id=${liceoId}`)} 
           style={{ backgroundColor: '#f97316', color: 'white', border: 'none', padding: '12px 24px', borderRadius: '8px', fontSize: '14px', fontWeight: '700', cursor: 'pointer', transition: 'background-color 0.2s' }}
         >
           Completar Perfil Ahora →
         </button>
       </div>
 
-      {/* MARCADORES DE POSICIÓN BLOQUEADOS */}
+      {/* Marcadores de posición bloqueados */}
       <div style={{ marginTop: '32px', opacity: 0.5, pointerEvents: 'none' }}>
         <h3 style={{ color: '#1a365d', fontSize: '16px', fontWeight: '700', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px', marginBottom: '20px' }}>
           Resumen del Liceo (Bloqueado)

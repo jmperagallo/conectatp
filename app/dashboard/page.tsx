@@ -4,7 +4,6 @@ import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
-// Importamos los 4 submódulos modulares
 import DashboardSuperRoot from '../components/dashboards/DashboardSuperRoot';
 import DashboardCoordinador from '../components/dashboards/DashboardCoordinador';
 import DashboardJefeEspecialidad from '../components/dashboards/DashboardJefeEspecialidad';
@@ -22,7 +21,7 @@ export default function DashboardPage() {
   const router = useRouter();
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [role, setRole] = useState<string | null>(null);
-  const [idLiceo, setIdLiceo] = useState<string | null>(null); // 🔥 NUEVO: Para saber qué colegio le corresponde
+  const [idLiceo, setIdLiceo] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [liceos, setLiceos] = useState<Liceo[]>([]);
 
@@ -31,7 +30,6 @@ export default function DashboardPage() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  // Carga inicial de liceos (Solo consumida si el rol es super_root)
   const fetchLiceos = async () => {
     const { data, error } = await supabase
       .from('liceos')
@@ -41,7 +39,6 @@ export default function DashboardPage() {
     if (!error && data) setLiceos(data);
   };
 
-  // Acción controlada para eliminar establecimientos desde el panel Super Root
   const handleEliminarLiceo = async (rbdAEliminar: string, nombreLiceo: string) => {
     const confirmar = window.confirm(`⚠️ ACCIÓN CONTROLADA (SU)\n\n¿Deseas eliminar permanentemente el liceo "${nombreLiceo}"?`);
     if (!confirmar) return;
@@ -70,7 +67,6 @@ export default function DashboardPage() {
       const emailLimpio = session.user.email ? session.user.email.trim().toLowerCase() : '';
       if (isMounted) setUserEmail(emailLimpio);
 
-      // Regla de oro: Cuenta administradora global de la plataforma
       if (emailLimpio === 'contacto@conectatp.cl') {
         if (isMounted) {
           setRole('super_root');
@@ -80,19 +76,36 @@ export default function DashboardPage() {
         return;
       }
 
-      // Verificación de roles institucionales en la lista blanca
       try {
-        // 🔥 CORRECCIÓN: Traemos 'rol' y también 'id_liceo'
-        const { data: perfil, error } = await supabase
+        const { data, error }: any = await supabase
           .from('lista_blanca')
           .select('rol, id_liceo')
           .eq('correo', emailLimpio)
           .maybeSingle();
 
         if (isMounted) {
-          if (perfil && !error) {
-            setRole(perfil.rol);
-            setIdLiceo(perfil.id_liceo); // Guardamos el ID del colegio asociado
+          if (data && !error) {
+            setRole(data.role || data.rol);
+            const liceoIdDetectado = data.id_liceo || null;
+            setIdLiceo(liceoIdDetectado);
+
+            // 🚨 ESCUDO DE CONTROL: Validación de Primer Ingreso para Coordinación
+            if (data.rol === 'coordinador' || data.rol === 'administrador_liceo') {
+              if (liceoIdDetectado) {
+                const { data: liceoCheck, error: errCheck } = await supabase
+                  .from('liceos')
+                  .select('encargado_nombres')
+                  .eq('id', liceoIdDetectado)
+                  .single();
+
+                // Si no hay datos guardados del encargado, se le fuerza a ir a /perfil?id=X
+                if (errCheck || !liceoCheck || !liceoCheck.encargado_nombres) {
+                  router.replace(`/perfil?id=${liceoIdDetectado}`);
+                  return;
+                }
+              }
+            }
+
           } else {
             setRole('estudiante');
           }
@@ -116,7 +129,6 @@ export default function DashboardPage() {
     router.replace('/login');
   };
 
-  // Pantalla de carga unificada corporativa
   if (loading) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc', fontFamily: 'system-ui, sans-serif', gap: '12px' }}>
@@ -130,7 +142,7 @@ export default function DashboardPage() {
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#f1f5f9', fontFamily: 'system-ui, sans-serif', display: 'flex' }}>
       
-      {/* MENÚ LATERAL COMÚN DE NAVEGACIÓN */}
+      {/* MENÚ LATERAL */}
       <div style={{ width: '260px', backgroundColor: '#0f172a', color: '#ffffff', display: 'flex', flexDirection: 'column', height: '100vh', position: 'fixed', left: 0, top: 0, borderRight: '1px solid #1e293b' }}>
         <div style={{ padding: '28px 24px', borderBottom: '1px solid #1e293b' }}>
           <h2 style={{ margin: 0, fontSize: '22px', fontWeight: '800', color: '#ffffff', letterSpacing: '-0.5px' }}>
@@ -158,33 +170,23 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* ÁREA DE CONTENIDO PRINCIPAL DINÁMICO */}
+      {/* ÁREA DE CONTENIDO */}
       <div style={{ marginLeft: '260px', padding: '40px', flex: 1, boxSizing: 'border-box' }}>
-        
-        {/* 1. VISTA SUPER ROOT / PLATAFORMA */}
         {role === 'super_root' && (
-          <DashboardSuperRoot 
-            userEmail={userEmail} 
-            liceos={liceos} 
-            onEliminarLiceo={handleEliminarLiceo} 
-          />
+          <DashboardSuperRoot userEmail={userEmail} liceos={liceos} onEliminarLiceo={handleEliminarLiceo} />
         )}
 
-        {/* 2. VISTA ADMINISTRADOR COLEGIAL (CORREGIDO AL ENUM REAL) */}
-        {role === 'administrador_liceo' && (
+        {(role === 'coordinador' || role === 'administrador_liceo') && (
           <DashboardCoordinador userEmail={userEmail} idLiceo={idLiceo} />
         )}
 
-        {/* 3. VISTA JEFE DE ESPECIALIDAD */}
         {role === 'jefe_especialidad' && (
           <DashboardJefeEspecialidad userEmail={userEmail} />
         )}
 
-        {/* 4. VISTA ESTUDIANTES (O roles no clasificados) */}
-        {role !== 'super_root' && role !== 'administrador_liceo' && role !== 'jefe_especialidad' && (
+        {role !== 'super_root' && role !== 'coordinador' && role !== 'administrador_liceo' && role !== 'jefe_especialidad' && (
           <DashboardEstudiante role={role} />
         )}
-        
       </div>
 
     </div>

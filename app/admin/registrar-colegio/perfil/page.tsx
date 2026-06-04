@@ -2,9 +2,10 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { createBrowserClient } from "@supabase/ssr";
-import { useRouter, useSearchParams } from "next/navigation";
-import { School, ClipboardList, Mail, ShieldAlert, Plus, X, User, Phone, Info, MapPin, Upload, Image as ImageIcon, Briefcase } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { School, ClipboardList, ShieldAlert, Plus, X, User, MapPin, Upload, Image as ImageIcon, Briefcase, Loader2 } from "lucide-react";
 import Header from "@/app/components/Header";
+import { useR2Upload } from "@/hooks/useR2Upload";
 
 const COLORES = {
   azul: "#1a365d",
@@ -118,12 +119,12 @@ interface JefeEspecialidad {
 
 export default function AdministrarColegios() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const idUrl = searchParams.get("id");
   const fileInputRef = useRef<HTMLInputElement>(null);
   
+  const [loadingSesion, setLoadingSesion] = useState(true);
   const [saving, setSaving] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [liceoId, setLiceoId] = useState<string | null>(null);
 
   // SECCIÓN 1: Establecimiento
   const [rbd, setRbd] = useState("");
@@ -166,12 +167,26 @@ export default function AdministrarColegios() {
   const [jefeCorreo, setJefeCorreo] = useState("");
   const [listaJefes, setListaJefes] = useState<JefeEspecialidad[]>([]);
 
+  // Hook para subir a Cloudflare R2
+  const { uploadFile: uploadLogo, uploading: uploadingLogo } = useR2Upload({
+    folder: "logos",
+    maxSizeMB: 2,
+    onSuccess: (url) => {
+      setLogoUrl(url);
+      setPreviewLogo(url);
+      console.log("✅ Logo subido a R2:", url);
+    },
+    onError: (error) => {
+      console.error("Error subiendo logo:", error);
+      alert(`No se pudo subir el logo: ${error}`);
+    }
+  });
+
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  // Formateadores estándar originales
   const formatRut = (value: string) => {
     let actual = value.replace(/[^0-9kK]/g, "").toUpperCase();
     if (actual.length <= 1) return actual;
@@ -206,88 +221,126 @@ export default function AdministrarColegios() {
     setTelefonoMovilColegio("+56 9 " + formateado);
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      setArchivoLogo(file);
-      const reader = new FileReader();
-      reader.onloadend = () => { setPreviewLogo(reader.result as string); };
-      reader.readAsDataURL(file);
+  // handleFileChange modificado para subir directamente a R2
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Preview local inmediato
+    const reader = new FileReader();
+    reader.onloadend = () => setPreviewLogo(reader.result as string);
+    reader.readAsDataURL(file);
+    
+    // Subir a Cloudflare R2
+    const url = await uploadLogo(file);
+    if (url) {
+      setLogoUrl(url);
+      setArchivoLogo(file); // Guardamos referencia por si acaso
     }
   };
 
-  // Cargar datos institucionales desde Supabase
   useEffect(() => {
-    async function cargarDatosLiceo() {
-      if (!idUrl) return;
-      setIsEditing(true);
-      
-      const { data: liceo, error: errLiceo } = await supabase
-        .from("liceos")
-        .select("*")
-        .eq("id", idUrl)
-        .single();
+    async function detectarYBuscarLiceo() {
+      try {
+        setLoadingSesion(true);
 
-      if (liceo && !errLiceo) {
-        setRbd(liceo.rbd || "");
-        setNombre(liceo.nombre || "");
-        setComuna(liceo.comuna || "");
-        
-        const siglaBaseDatos = liceo.region || "";
-        if (MAPA_REGIONES[siglaBaseDatos.toUpperCase()]) {
-          setRegion(MAPA_REGIONES[siglaBaseDatos.toUpperCase()]);
-        } else {
-          setRegion(siglaBaseDatos);
+        const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+        if (authError || !user || !user.email) {
+          console.log("No se detectó sesión activa de usuario.");
+          setLoadingSesion(false);
+          return;
         }
 
-        if (liceo.dependencia) setDependencia(liceo.dependencia);
+        const correoUsuario = user.email.toLowerCase();
 
-        setEncargadoNombres(liceo.encargado_nombres || "");
-        setEncargadoApPaterno(liceo.encargado_paterno || "");
-        setEncargadoApMaterno(liceo.encargado_materno || "");
-        setEncargadoRut(liceo.encargado_rut || "");
-        setCorreoRespaldo(liceo.correo_respaldo || "");
-        if (liceo.telefono_contacto) setTelefonoContacto(liceo.telefono_contacto);
+        const { data: usuarioLista, error: errLista } = await supabase
+          .from("lista_blanca")
+          .select("id_liceo")
+          .eq("correo", correoUsuario)
+          .single();
 
-        setLogoUrl(liceo.logo_url || "");
-        if (liceo.logo_url) setPreviewLogo(liceo.logo_url);
-        setTelefonoFijo(liceo.telefono_fijo || "");
-        if (liceo.telefono_movil_colegio) setTelefonoMovilColegio(liceo.telefono_movil_colegio);
-        setTieneWhatsapp(liceo.tiene_whatsapp || false);
-        setDireccionPostal(liceo.direccion_postal || "");
-        setNombreDirector(liceo.nombre_director || "");
-        setCorreoDirector(liceo.correo_director || "");
-        setMision(liceo.mision || "");
-        setVision(liceo.vision || "");
-        setDecretoCooperador(liceo.decreto_cooperador || "");
-      }
+        if (errLista || !usuarioLista || !usuarioLista.id_liceo) {
+          console.error("El correo no tiene un Liceo vinculado en la Lista Blanca.");
+          setLoadingSesion(false);
+          return;
+        }
 
-      // Cargar lista blanca vinculada
-      const { data: jefesBD, error: errJefes } = await supabase
-        .from("lista_blanca")
-        .select("*")
-        .eq("id_liceo", idUrl);
+        const idEncontrado = usuarioLista.id_liceo;
+        setLiceoId(idEncontrado);
+        setIsEditing(true);
+        
+        const { data: liceo, error: errLiceo } = await supabase
+          .from("liceos")
+          .select("*")
+          .eq("id", idEncontrado)
+          .single();
 
-      if (jefesBD && !errJefes) {
-        const mapeados: JefeEspecialidad[] = jefesBD.map(j => ({
-          id: j.id,
-          nombre: j.nombre || "",
-          apPaterno: j.apellido_paterno || "",
-          apMaterno: j.apellido_materno || "",
-          sector: j.sector || "General",
-          especialidad: j.especialidad || (j.rol === "master" ? "Administración General" : "General"),
-          mencion: j.mencion || "No requiere",
-          correo: j.correo
-        }));
-        setListaJefes(mapeados);
+        if (liceo && !errLiceo) {
+          setRbd(liceo.rbd || "");
+          setNombre(liceo.nombre || "");
+          setComuna(liceo.comuna || "");
+          
+          const siglaBaseDatos = liceo.region || "";
+          if (MAPA_REGIONES[siglaBaseDatos.toUpperCase()]) {
+            setRegion(MAPA_REGIONES[siglaBaseDatos.toUpperCase()]);
+          } else {
+            setRegion(siglaBaseDatos);
+          }
 
-        const master = jefesBD.find(j => j.rol === "master") || jefesBD[0];
-        if (master) setCorreoPrincipal(master.correo);
+          if (liceo.dependencia) setDependencia(liceo.dependencia);
+
+          setEncargadoNombres(liceo.encargado_nombres || "");
+          setEncargadoApPaterno(liceo.encargado_paterno || "");
+          setEncargadoApMaterno(liceo.encargado_materno || "");
+          setEncargadoRut(liceo.encargado_rut || "");
+          setCorreoRespaldo(liceo.correo_respaldo || "");
+          if (liceo.telefono_contacto) setTelefonoContacto(liceo.telefono_contacto);
+
+          setLogoUrl(liceo.logo_url || "");
+          if (liceo.logo_url) setPreviewLogo(liceo.logo_url);
+          setTelefonoFijo(liceo.telefono_fijo || "");
+          if (liceo.telefono_movil_colegio) setTelefonoMovilColegio(liceo.telefono_movil_colegio);
+          setTieneWhatsapp(liceo.tiene_whatsapp || false);
+          setDireccionPostal(liceo.direccion_postal || "");
+          setNombreDirector(liceo.nombre_director || "");
+          setCorreoDirector(liceo.correo_director || "");
+          setMision(liceo.mision || "");
+          setVision(liceo.vision || "");
+          setDecretoCooperador(liceo.decreto_cooperador || "");
+        }
+
+        const { data: jefesBD, error: errJefes } = await supabase
+          .from("lista_blanca")
+          .select("*")
+          .eq("id_liceo", idEncontrado);
+
+        if (jefesBD && !errJefes) {
+          const mapeados: JefeEspecialidad[] = jefesBD.map(j => ({
+            id: j.id,
+            nombre: j.nombre || "",
+            apPaterno: j.apellido_paterno || "",
+            apMaterno: j.apellido_materno || "",
+            sector: j.sector || "General",
+            especialidad: j.especialidad || (j.rol === "master" ? "Administración General" : "General"),
+            mencion: j.mencion || "No requiere",
+            correo: j.correo
+          }));
+          setListaJefes(mapeados);
+
+          const master = jefesBD.find(j => j.rol === "master") || jefesBD[0];
+          if (master) setCorreoPrincipal(master.correo);
+        }
+
+      } catch (error) {
+        console.error("Error capturando datos por sesión:", error);
+      } finally {
+        setLoadingSesion(false);
       }
     }
 
-    cargarDatosLiceo();
-  }, [idUrl, supabase]);
+    detectarYBuscarLiceo();
+  }, [supabase]);
 
   const handleAgregarJefe = (e: React.FormEvent) => {
     e.preventDefault();
@@ -333,106 +386,144 @@ export default function AdministrarColegios() {
     setListaJefes(listaJefes.filter(j => j.correo !== correoAQuitar));
   };
 
-  // Guardado optimizado y blindado contra errores indefinidos de lectura
   const handleRegistrarEcosistema = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Validación de RUT segura usando salvaguarda para evitar caídas por longitud indefinida
-    if (encargadoRut && encargadoRut.trim().length < 11) {
-      alert("Por favor, ingresa un RUT válido en formato completo (ej: 12.345.678-K).");
+    console.log("🚀 [INICIO] Ejecutando handleRegistrarEcosistema...");
+
+    if (encargadoRut && encargadoRut.length < 11) {
+      alert("Por favor, ingresa un RUT válido en formato completo.");
+      return;
+    }
+
+    if (!liceoId) {
+      console.error("❌ [ERROR CRÍTICO] liceoId está vacío o es null. No se puede guardar nada.");
+      alert("Error: No se ha detectado el identificador del liceo asociado a tu cuenta.");
       return;
     }
 
     setSaving(true);
 
     try {
+      // ==========================================
+      // PASO 1: SUBIDA DE LOGO - YA NO ES NECESARIO
+      // El logo ya se subió en handleFileChange a Cloudflare R2
+      // Solo verificamos que tengamos la URL
+      // ==========================================
       let urlLogoFinal = logoUrl;
-
-      // Subida de imagen a Cloudflare R2
-      if (archivoLogo) {
-        try {
-          const uploadFormData = new FormData();
-          uploadFormData.append("file", archivoLogo);
-          uploadFormData.append("rbd", rbd || "colegio");
-
-          const responseR2 = await fetch("/api/upload-logo", {
-            method: "POST",
-            body: uploadFormData,
-          });
-
-          const dataR2 = await responseR2.json();
-
-          if (dataR2.success) {
-            urlLogoFinal = dataR2.url; 
-          } else {
-            console.error("Error devuelto por R2 API:", dataR2.error);
-            alert("Aviso: No se pudo subir la insignia a Cloudflare, pero guardaremos el resto de los datos.");
-          }
-        } catch (errLogo) {
-          console.error("Fallo de red al conectar con Cloudflare R2:", errLogo);
+      
+      if (archivoLogo && !urlLogoFinal) {
+        // Si por alguna razón el archivo existe pero no tenemos URL, intentamos subir de nuevo
+        console.log("⚠️ Logo pendiente de subir, intentando ahora...");
+        const url = await uploadLogo(archivoLogo);
+        if (url) {
+          urlLogoFinal = url;
+        } else {
+          throw new Error("No se pudo subir el logo a Cloudflare R2");
         }
       }
 
-      // Actualizar datos del Liceo en la base de datos
-      if (isEditing && idUrl) {
+      console.log("📸 URL final del logo:", urlLogoFinal);
+
+      // ==========================================
+      // PASO 2: ACTUALIZACIÓN DE TABLA 'LICEOS'
+      // ==========================================
+      if (isEditing && liceoId) {
+        const payloadLiceo = {
+          encargado_nombres: encargadoNombres.trim(),
+          encargado_paterno: encargadoApPaterno.trim(),
+          encargado_materno: encargadoApMaterno.trim(),
+          encargado_rut: encargadoRut.trim(),
+          correo_respaldo: correoRespaldo.trim().toLowerCase(),
+          telefono_contacto: telefonoContacto.trim(),
+          logo_url: urlLogoFinal, 
+          telefono_fijo: telefonoFijo.trim(),
+          telefono_movil_colegio: telefonoMovilColegio.trim(),
+          tiene_whatsapp: tieneWhatsapp,
+          direccion_postal: direccionPostal.trim(),
+          nombre_director: nombreDirector.trim(),
+          correo_director: correoDirector.trim().toLowerCase(),
+          mision: mision.trim(),
+          vision: vision.trim(),
+          decreto_cooperador: decretoCooperador.trim()
+        };
+
+        console.log(`📝 [SUPABASE] Actualizando tabla 'liceos' para ID: ${liceoId}. Datos enviados:`, payloadLiceo);
+
         const { error: errUpdate } = await supabase
           .from("liceos")
-          .update({
-            encargado_nombres: (encargadoNombres || "").trim(),
-            encargado_paterno: (encargadoApPaterno || "").trim(),
-            encargado_materno: (encargadoApMaterno || "").trim(),
-            encargado_rut: (encargadoRut || "").trim(),
-            correo_respaldo: (correoRespaldo || "").trim().toLowerCase(),
-            telefono_contacto: (telefonoContacto || "").trim(),
-            logo_url: urlLogoFinal, 
-            telefono_fijo: (telefonoFijo || "").trim(),
-            telefono_movil_colegio: (telefonoMovilColegio || "").trim(),
-            tiene_whatsapp: tieneWhatsapp || false,
-            direccion_postal: (direccionPostal || "").trim(),
-            nombre_director: (nombreDirector || "").trim(),
-            correo_director: (correoDirector || "").trim().toLowerCase(),
-            mision: (mision || "").trim(),
-            vision: (vision || "").trim(),
-            decreto_cooperador: (decretoCooperador || "").trim()
-          })
-          .eq("id", idUrl);
+          .update(payloadLiceo)
+          .eq("id", liceoId);
 
-        if (errUpdate) throw new Error(`Error al actualizar tabla liceos: ${errUpdate.message}`);
+        if (errUpdate) {
+          console.error("❌ [SUPABASE ERROR] Falló la actualización en la tabla 'liceos':", errUpdate);
+          throw new Error(`Error en tabla liceos: ${errUpdate.message} (Código: ${errUpdate.code})`);
+        }
+        console.log("✅ [SUPABASE] Tabla 'liceos' actualizada correctamente.");
 
-        // Eliminar registros anteriores de lista_blanca que no correspondan al máster
-        await supabase.from("lista_blanca").delete().eq("id_liceo", idUrl).neq("correo", correoPrincipal);
-        
-        // Filtrar y preparar la inserción controlando datos limpios
-        const jefesAInsertar = listaJefes.filter(j => j.correo && j.correo.trim().toLowerCase() !== (correoPrincipal || "").trim().toLowerCase());
-        
+        // ==========================================
+        // PASO 3: LIMPIEZA DE JEFES ANTERIORES
+        // ==========================================
+        console.log(`🗑️ [SUPABASE] Limpiando lista_blanca para liceo ${liceoId}, exceptuando al máster: ${correoPrincipal}`);
+        const { error: errDelete } = await supabase
+          .from("lista_blanca")
+          .delete()
+          .eq("id_liceo", liceoId)
+          .neq("correo", correoPrincipal);
+
+        if (errDelete) {
+          console.error("❌ [SUPABASE ERROR] Falló el borrado de la nómina antigua:", errDelete);
+          throw new Error(`Error limpiando lista_blanca: ${errDelete.message}`);
+        }
+        console.log("✅ [SUPABASE] Limpieza de lista_blanca ejecutada sin errores.");
+
+        // ==========================================
+        // PASO 4: INSERCIÓN DE NUEVOS JEFES
+        // ==========================================
+        const jefesAInsertar = listaJefes.filter(j => j.correo !== correoPrincipal);
+        console.log(`👥 [NÓMINA] Jefes totales en interfaz: ${listaJefes.length}. Jefes nuevos/adicionales a insertar: ${jefesAInsertar.length}`);
+
         if (jefesAInsertar.length > 0) {
-          const payloads = jefesAInsertar.map(j => ({
+          const payloadsJefes = jefesAInsertar.map(j => ({
             correo: j.correo.trim().toLowerCase(),
             nombre: j.nombre.trim(),
-            apellido_paterno: j.apPaterno.trim(),
-            apellido_materno: j.apMaterno.trim(),
-            sector: j.sector || "General",
-            especialidad: j.especialidad || "General",
-            mencion: j.mencion || "No requiere",
-            rol: "institucion", 
-            id_liceo: idUrl
+            apellido_paterno: j.apPaterno.trim(),  
+            apellido_materno: j.apMaterno.trim(),  
+            sector: j.sector,
+            especialidad: j.especialidad,
+            mencion: j.mencion,
+            rol: "institucion",
+            id_liceo: liceoId
           }));
 
-          const { error: errJefes } = await supabase.from("lista_blanca").insert(payloads);
-          if (errJefes) {
-            console.error("Error al insertar jefes en lista_blanca:", errJefes);
-            alert(`Los datos principales del liceo se guardaron, pero ocurrió un problema al añadir los Jefes de Especialidad: ${errJefes.message}`);
+          console.log("📝 [SUPABASE] Enviando lote de inserción masiva a 'lista_blanca':", payloadsJefes);
+
+          const { error: errInsertJefes, data: dataInsertada } = await supabase
+            .from("lista_blanca")
+            .insert(payloadsJefes)
+            .select();
+
+          if (errInsertJefes) {
+            console.error("❌ [SUPABASE ERROR] Falló la inserción masiva en 'lista_blanca':", errInsertJefes);
+            throw new Error(`Error al insertar la nómina de jefes: ${errInsertJefes.message} (Detalle: ${errInsertJefes.details || 'Ninguno'})`);
           }
+          console.log("✅ [SUPABASE] Todos los jefes de especialidad fueron indexados con éxito:", dataInsertada);
+        } else {
+          console.log("ℹ️ [NÓMINA] No hay jefes adicionales para registrar (Lista vacía o solo está el máster).");
         }
       }
 
       alert("✅ ¡Ecosistema e Información de Jefes por Especialidad guardada con éxito!");
-      router.push("/dashboard");
+      
+      setTimeout(() => {
+        router.push("/dashboard");
+      }, 1000);
+
     } catch (error: any) {
-      console.error("Error global de guardado:", error);
-      alert(`💥 Error al guardar:\n${error.message}`);
+      console.error("💥 [COLAPSO DEL PROCESO] Se detuvo el guardado debido a:", error);
+      alert(`💥 Error detectado:\n\n${error.message}`);
     } finally {
       setSaving(false);
+      console.log("🏁 [FIN] Proceso de guardado finalizado.");
     }
   };
 
@@ -444,6 +535,16 @@ export default function AdministrarColegios() {
     border: disabled ? "1px solid #cbd5e1" : `1px solid ${COLORES.borde}`
   });
 
+  if (loadingSesion) {
+    return (
+      <div style={{ minHeight: "100vh", backgroundColor: COLORES.fondo, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "12px", fontFamily: "system-ui, sans-serif" }}>
+        <Loader2 size={40} color={COLORES.azul} style={{ animation: "spin 1s linear infinite" }} />
+        <p style={{ color: COLORES.grisClaro, fontSize: "15px", fontWeight: "600" }}>Identificando tu establecimiento en ConectaTP...</p>
+        <style>{`@keyframes spin { 100% { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
+
   return (
     <div style={{ minHeight: "100vh", backgroundColor: COLORES.fondo, fontFamily: "system-ui, sans-serif", display: "flex", flexDirection: "column" }}>
       <Header />
@@ -451,7 +552,6 @@ export default function AdministrarColegios() {
       <main style={{ flex: 1, display: "flex", justifyContent: "center", padding: "40px 24px" }}>
         <form onSubmit={handleRegistrarEcosistema} style={{ width: "100%", maxWidth: "750px", display: "flex", flexDirection: "column", gap: "24px" }}>
           
-          {/* BANNER 1 */}
           <div style={{ backgroundColor: "#fff7ed", borderRadius: "16px", padding: "20px", border: "1px solid #ffedd5", display: "flex", gap: "14px", alignItems: "center" }}>
             <ShieldAlert size={24} color={COLORES.naranja} style={{ flexShrink: 0 }} />
             <p style={{ fontSize: "14px", color: "#9a3412", margin: 0, lineHeight: "1.4" }}>
@@ -459,7 +559,6 @@ export default function AdministrarColegios() {
             </p>
           </div>
 
-          {/* BANNER 2 */}
           <div style={{ backgroundColor: "#eff6ff", borderRadius: "16px", padding: "20px", border: "1px solid #dbeafe", display: "flex", gap: "14px", alignItems: "center" }}>
             <ClipboardList size={24} color="#3b82f6" style={{ flexShrink: 0 }} />
             <p style={{ fontSize: "14px", color: "#1e40af", margin: 0, lineHeight: "1.4" }}>
@@ -531,7 +630,7 @@ export default function AdministrarColegios() {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
                 <div>
                   <label style={labelStyle}>Correo Electrónico Principal (🔒 Bloqueado)</label>
-                  <input type="text" style={getInputStyle(true)} value={correoPrincipal || "cargando..."} disabled />
+                  <input type="text" style={getInputStyle(true)} value={correoPrincipal || "Detectando cuenta..."} disabled />
                 </div>
                 <div>
                   <label style={labelStyle}>Correo Electrónico de Respaldo</label>
@@ -563,7 +662,9 @@ export default function AdministrarColegios() {
                   <input type="file" ref={fileInputRef} accept="image/*" onChange={handleFileChange} style={{ display: "none" }} />
                   <div onClick={() => fileInputRef.current?.click()} style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "20px", border: `2px dashed ${COLORES.naranja}`, borderRadius: "12px", backgroundColor: "#fffbfa", cursor: "pointer" }}>
                     <Upload size={22} color={COLORES.naranja} style={{ marginBottom: "6px" }} />
-                    <span style={{ fontSize: "13px", fontWeight: "700", color: COLORES.azul }}>Haz clic para cargar imagen</span>
+                    <span style={{ fontSize: "13px", fontWeight: "700", color: COLORES.azul }}>
+                      {uploadingLogo ? "Subiendo logo..." : "Haz clic para cargar imagen"}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -764,7 +865,6 @@ export default function AdministrarColegios() {
 
           </div>
 
-          {/* Botón de envío global */}
           <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "10px" }}>
             <button
               type="submit"
