@@ -1,6 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
 
 interface Props {
   userEmail: string | null;
@@ -9,13 +10,31 @@ interface Props {
 
 export default function DashboardCoordinador({ userEmail, idLiceo }: Props) {
   const router = useRouter();
+  const [debugInfo, setDebugInfo] = useState<string>('');
+
+  useEffect(() => {
+    // Log para depuración
+    console.log('📊 DashboardCoordinador - Datos recibidos:', { userEmail, idLiceo });
+    setDebugInfo(`ID Liceo: ${idLiceo || 'No detectado'} | Email: ${userEmail || 'No detectado'}`);
+  }, [userEmail, idLiceo]);
 
   const handleCompletarPerfil = () => {
+    console.log('🔍 handleCompletarPerfil - idLiceo actual:', idLiceo);
+    
     if (idLiceo) {
-      router.push(`/admin/registrar-colegio/perfil?id=${idLiceo}`);
+      const targetUrl = `/admin/registrar-colegio/perfil?id=${idLiceo}`;
+      console.log('🚀 Redirigiendo a:', targetUrl);
+      router.push(targetUrl);
     } else {
-      console.error('No se encontró el ID del liceo');
+      console.error('❌ No se encontró el ID del liceo');
       alert('Error: No se pudo identificar tu establecimiento. Contacta al administrador.');
+    }
+  };
+
+  // URL para prueba directa (útil para debugging)
+  const handleIrDirecto = () => {
+    if (idLiceo) {
+      window.open(`/admin/registrar-colegio/perfil?id=${idLiceo}`, '_blank');
     }
   };
 
@@ -35,6 +54,19 @@ export default function DashboardCoordinador({ userEmail, idLiceo }: Props) {
           <p style={{ color: '#94a3b8', margin: '8px 0 0 0', fontSize: '12px' }}>
             Sesión: {userEmail}
           </p>
+        )}
+        
+        {/* Debug info - visible solo en desarrollo */}
+        {process.env.NODE_ENV === 'development' && (
+          <div style={{ marginTop: '12px', padding: '8px', backgroundColor: '#f1f5f9', borderRadius: '6px', fontSize: '11px', color: '#475569' }}>
+            <strong>🔧 Debug:</strong> {debugInfo}
+            <button 
+              onClick={handleIrDirecto}
+              style={{ marginLeft: '12px', padding: '2px 8px', fontSize: '10px', backgroundColor: '#64748b', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+            >
+              Probar URL directa
+            </button>
+          </div>
         )}
       </div>
 
