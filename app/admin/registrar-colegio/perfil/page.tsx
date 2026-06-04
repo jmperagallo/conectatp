@@ -423,41 +423,51 @@ export default function AdministrarColegios() {
 
       console.log("📸 URL final del logo:", urlLogoFinal);
 
+
+      
       // ==========================================
-      // PASO 2: ACTUALIZACIÓN DE TABLA 'LICEOS'
-      // ==========================================
-      if (isEditing && liceoId) {
-        const payloadLiceo = {
-          encargado_nombres: encargadoNombres.trim(),
-          encargado_paterno: encargadoApPaterno.trim(),
-          encargado_materno: encargadoApMaterno.trim(),
-          encargado_rut: encargadoRut.trim(),
-          correo_respaldo: correoRespaldo.trim().toLowerCase(),
-          telefono_contacto: telefonoContacto.trim(),
-          logo_url: urlLogoFinal, 
-          telefono_fijo: telefonoFijo.trim(),
-          telefono_movil_colegio: telefonoMovilColegio.trim(),
-          tiene_whatsapp: tieneWhatsapp,
-          direccion_postal: direccionPostal.trim(),
-          nombre_director: nombreDirector.trim(),
-          correo_director: correoDirector.trim().toLowerCase(),
-          mision: mision.trim(),
-          vision: vision.trim(),
-          decreto_cooperador: decretoCooperador.trim()
-        };
+// PASO 2: ACTUALIZACIÓN DE TABLA 'LICEOS'
+// ==========================================
+console.log("🔍 [DEBUG] isEditing:", isEditing, "liceoId:", liceoId);
 
-        console.log(`📝 [SUPABASE] Actualizando tabla 'liceos' para ID: ${liceoId}. Datos enviados:`, payloadLiceo);
+if (liceoId) {
+  const payloadLiceo = {
+    encargado_nombres: encargadoNombres.trim(),
+    encargado_paterno: encargadoApPaterno.trim(),
+    encargado_materno: encargadoApMaterno.trim(),
+    encargado_rut: encargadoRut.trim(),
+    correo_respaldo: correoRespaldo.trim().toLowerCase(),
+    telefono_contacto: telefonoContacto.trim(),
+    logo_url: urlLogoFinal, 
+    telefono_fijo: telefonoFijo.trim(),
+    telefono_movil_colegio: telefonoMovilColegio.trim(),
+    tiene_whatsapp: tieneWhatsapp,
+    direccion_postal: direccionPostal.trim(),
+    nombre_director: nombreDirector.trim(),
+    correo_director: correoDirector.trim().toLowerCase(),
+    mision: mision.trim(),
+    vision: vision.trim(),
+    decreto_cooperador: decretoCooperador.trim()
+  };
 
-        const { error: errUpdate } = await supabase
-          .from("liceos")
-          .update(payloadLiceo)
-          .eq("id", liceoId);
+  console.log("📝 [SUPABASE] Payload a enviar:", payloadLiceo);
 
-        if (errUpdate) {
-          console.error("❌ [SUPABASE ERROR] Falló la actualización en la tabla 'liceos':", errUpdate);
-          throw new Error(`Error en tabla liceos: ${errUpdate.message} (Código: ${errUpdate.code})`);
-        }
-        console.log("✅ [SUPABASE] Tabla 'liceos' actualizada correctamente.");
+  const { data: updatedData, error: errUpdate } = await supabase
+    .from("liceos")
+    .update(payloadLiceo)
+    .eq("id", liceoId)
+    .select();  // 👈 importante: devuelve el registro actualizado
+
+  if (errUpdate) {
+    console.error("❌ [SUPABASE ERROR] Falló actualización:", errUpdate);
+    throw new Error(`Error en tabla liceos: ${errUpdate.message}`);
+  } else {
+    console.log("✅ [SUPABASE] Liceo actualizado correctamente:", updatedData);
+  }
+} else {
+  console.warn("⚠️ No hay liceoId, no se puede actualizar la tabla liceos");
+}
+
 
         // ==========================================
         // PASO 3: LIMPIEZA DE JEFES ANTERIORES
