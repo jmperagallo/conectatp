@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic'; // 🛠️ Solución para la compilación estática de Vercel
+
 import { useState, useEffect } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -120,5 +122,4 @@ export default function LoginPage() {
 
       </div>
     </div>
-  );
-}
+  )
