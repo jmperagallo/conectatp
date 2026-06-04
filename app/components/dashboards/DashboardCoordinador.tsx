@@ -11,12 +11,12 @@ interface DashboardCoordinadorProps {
 export default function DashboardCoordinador({ userEmail, idLiceo }: DashboardCoordinadorProps) {
   const router = useRouter();
 
-  // Función para redirigir llevando el ID del colegio a la ruta real de tu formulario
+  // 🚀 FUNCIÓN CORREGIDA: Apunta a la ruta real de internet según tu estructura de carpetas
   const handleCompletarPerfil = () => {
     if (idLiceo) {
-      router.push(`/admin/registrar-colegio/perfil?id=${idLiceo}`);
+      router.push(`/registrar-colegio/perfil?id=${idLiceo}`);
     } else {
-      router.push('/admin/registrar-colegio/perfil');
+      router.push('/registrar-colegio/perfil');
     }
   };
 
@@ -49,7 +49,7 @@ export default function DashboardCoordinador({ userEmail, idLiceo }: DashboardCo
           onClick={handleCompletarPerfil} 
           style={{ backgroundColor: '#f97316', color: 'white', border: 'none', padding: '12px 24px', borderRadius: '8px', fontSize: '14px', fontWeight: '700', cursor: 'pointer', transition: 'background-color 0.2s' }}
         >
-          Completar Mi Perfil Ahora →
+          Completar Perfil Ahora →
         </button>
       </div>
 
