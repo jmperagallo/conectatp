@@ -483,16 +483,16 @@ export default function AdministrarColegios() {
 
         if (jefesAInsertar.length > 0) {
           const payloadsJefes = jefesAInsertar.map(j => ({
-            correo: j.correo.trim().toLowerCase(),
-            nombre: j.nombre.trim(),
-            apellido_paterno: j.apPaterno.trim(),  
-            apellido_materno: j.apMaterno.trim(),  
-            sector: j.sector,
-            especialidad: j.especialidad,
-            mencion: j.mencion,
-            rol: "jefe_especialidad", // ✅ CORREGIDO: antes era "institucion"
-            id_liceo: liceoId
-          }));
+              correo: j.correo.trim().toLowerCase(),
+              nombre: j.nombre.trim(),
+              apellido_paterno: j.apPaterno.trim(),  
+              apellido_materno: j.apMaterno.trim(),  
+              sector: j.sector,
+              especialidad: j.especialidad,
+              mencion: j.mencion,
+              rol: "profesor",  // ✅ Cambiado de "jefe_especialidad" a "profesor"
+              id_liceo: liceoId
+            }));
 
           console.log("📝 [SUPABASE] Enviando lote de inserción masiva a 'lista_blanca':", payloadsJefes);
 
