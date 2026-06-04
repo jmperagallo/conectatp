@@ -22,6 +22,7 @@ export default function DashboardPage() {
   const router = useRouter();
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [role, setRole] = useState<string | null>(null);
+  const [idLiceo, setIdLiceo] = useState<string | null>(null); // 🏢 Guardamos el ID del colegio del coordinador
   const [loading, setLoading] = useState(true);
   const [liceos, setLiceos] = useState<Liceo[]>([]);
 
@@ -83,13 +84,17 @@ export default function DashboardPage() {
       try {
         const { data: perfil, error } = await supabase
           .from('lista_blanca')
-          .select('rol')
+          .select('rol, id_liceo') // 🔍 Traemos tanto el rol como el id_liceo (ajusta el nombre de la columna si es distinto)
           .eq('correo', emailLimpio)
           .maybeSingle();
 
         if (isMounted) {
-          // Si existe en lista blanca toma su rol, si no, es estudiante
-          setRole(perfil && !error ? perfil.rol : 'estudiante');
+          if (perfil && !error) {
+            setRole(perfil.rol);
+            setIdLiceo(perfil.id_liceo || null); // 👈 Asignamos el ID recuperado
+          } else {
+            setRole('estudiante');
+          }
           setLoading(false);
         }
       } catch (err) {
@@ -164,9 +169,9 @@ export default function DashboardPage() {
           />
         )}
 
-        {/* 2. VISTA ADMINISTRADOR COLEGIAL / COORDINADOR (Se activa con cualquiera de los dos términos) */}
+        {/* 2. VISTA ADMINISTRADOR COLEGIAL / COORDINADOR (Ahora le inyectamos los datos requeridos) */}
         {(role === 'coordinador' || role === 'administrador_liceo') && (
-          <DashboardCoordinador />
+          <DashboardCoordinador userEmail={userEmail} idLiceo={idLiceo} />
         )}
 
         {/* 3. VISTA JEFE DE ESPECIALIDAD */}
@@ -174,7 +179,7 @@ export default function DashboardPage() {
           <DashboardJefeEspecialidad userEmail={userEmail} />
         )}
 
-        {/* 4. VISTA ESTUDIANTES (Evitamos que entre administrador_liceo por descarte) */}
+        {/* 4. VISTA ESTUDIANTES */}
         {role !== 'super_root' && role !== 'coordinador' && role !== 'administrador_liceo' && role !== 'jefe_especialidad' && (
           <DashboardEstudiante role={role} />
         )}
