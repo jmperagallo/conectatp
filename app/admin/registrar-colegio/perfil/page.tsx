@@ -249,6 +249,7 @@ export default function AdministrarColegios() {
         }
 
         const correoUsuario = user.email.toLowerCase();
+        setCorreoPrincipal(correoUsuario);  // ✅ El correo del usuario logueado es el principal
 
         const { data: usuarioLista, error: errLista } = await supabase
           .from("lista_blanca")
@@ -299,12 +300,12 @@ export default function AdministrarColegios() {
           setDecretoCooperador(liceo.decreto_cooperador || "");
         }
 
-        // Cargar jefes de especialidad (excluyendo al máster)
+        // Cargar jefes de especialidad (excluyendo al usuario actual)
         const { data: jefesBD, error: errJefes } = await supabase
           .from("lista_blanca")
           .select("*")
           .eq("id_liceo", idEncontrado)
-          .neq("rol", "master"); // Excluir al súper admin o máster
+          .neq("correo", correoUsuario);  // 👈 Excluir al propio usuario
 
         if (jefesBD && !errJefes) {
           const mapeados: JefeEspecialidad[] = jefesBD.map(j => ({
@@ -319,15 +320,6 @@ export default function AdministrarColegios() {
           }));
           setListaJefes(mapeados);
         }
-
-        // Obtener correo del máster (para no mostrarlo en la lista de jefes)
-        const { data: master } = await supabase
-          .from("lista_blanca")
-          .select("correo")
-          .eq("id_liceo", idEncontrado)
-          .eq("rol", "master")
-          .single();
-        if (master) setCorreoPrincipal(master.correo);
 
       } catch (error) {
         console.error("Error capturando datos por sesión:", error);
@@ -392,7 +384,7 @@ export default function AdministrarColegios() {
       return;
     }
 
-    // Validar permisos: solo usuarios con rol administrador_liceo o profesor pueden modificar
+    // Validar permisos: solo administradores del liceo o profesores (jefes) pueden modificar
     if (rolUsuario !== 'administrador_liceo' && rolUsuario !== 'profesor') {
       alert("No tienes permisos para modificar los datos de este establecimiento.");
       return;
@@ -406,7 +398,7 @@ export default function AdministrarColegios() {
     setSaving(true);
 
     try {
-      // PASO 1: Logo
+      // PASO 1: Logo (si hay uno nuevo)
       let urlLogoFinal = logoUrl;
       if (archivoLogo && !urlLogoFinal) {
         console.log("⚠️ Logo pendiente de subir...");
@@ -416,7 +408,7 @@ export default function AdministrarColegios() {
       }
       console.log("📸 URL final del logo:", urlLogoFinal);
 
-      // PASO 2: Actualizar liceos (usando RBD que es único y está disponible)
+      // PASO 2: Actualizar liceos usando RBD (único, seguro)
       const payloadLiceo = {
         encargado_nombres: encargadoNombres.trim(),
         encargado_paterno: encargadoApPaterno.trim(),
@@ -598,7 +590,7 @@ export default function AdministrarColegios() {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
                 <div>
                   <label style={labelStyle}>Correo Electrónico Principal (🔒 Bloqueado)</label>
-                  <input type="text" style={getInputStyle(true)} value={correoPrincipal || "Detectando cuenta..."} disabled />
+                  <input type="text" style={getInputStyle(true)} value={correoPrincipal || "No detectado"} disabled />
                 </div>
                 <div>
                   <label style={labelStyle}>Correo Electrónico de Respaldo</label>
