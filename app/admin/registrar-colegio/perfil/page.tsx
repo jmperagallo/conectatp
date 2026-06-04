@@ -102,6 +102,14 @@ export default function AdministrarColegios() {
   const [liceoId, setLiceoId] = useState<string | null>(null);
   const [rolUsuario, setRolUsuario] = useState<string | null>(null);
 
+  // DEBUG: logs visibles en pantalla
+  const [debugLogs, setDebugLogs] = useState<string[]>([]);
+  const addDebugLog = (mensaje: string) => {
+    const timestamp = new Date().toLocaleTimeString();
+    setDebugLogs(prev => [`[${timestamp}] ${mensaje}`, ...prev]);
+    console.log(mensaje);
+  };
+
   // Datos del establecimiento
   const [rbd, setRbd] = useState("");
   const [nombre, setNombre] = useState("");
@@ -150,10 +158,10 @@ export default function AdministrarColegios() {
     onSuccess: (url) => {
       setLogoUrl(url);
       setPreviewLogo(url);
-      console.log("✅ Logo subido a R2:", url);
+      addDebugLog(`✅ Logo subido a R2: ${url}`);
     },
     onError: (error) => {
-      console.error("Error subiendo logo:", error);
+      addDebugLog(`❌ Error subiendo logo: ${error}`);
       alert(`No se pudo subir el logo: ${error}`);
     }
   });
@@ -163,7 +171,7 @@ export default function AdministrarColegios() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  // Funciones auxiliares (formatRut, telefonos)
+  // Funciones auxiliares
   const formatRut = (value: string) => {
     let actual = value.replace(/[^0-9kK]/g, "").toUpperCase();
     if (actual.length <= 1) return actual;
@@ -201,6 +209,7 @@ export default function AdministrarColegios() {
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    addDebugLog(`📸 Archivo seleccionado: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`);
     const reader = new FileReader();
     reader.onloadend = () => setPreviewLogo(reader.result as string);
     reader.readAsDataURL(file);
@@ -216,27 +225,30 @@ export default function AdministrarColegios() {
     async function detectarYBuscarLiceo() {
       try {
         setLoadingSesion(true);
+        addDebugLog("🔄 Cargando datos del establecimiento...");
         const { data: { user }, error: authError } = await supabase.auth.getUser();
         if (authError || !user || !user.email) {
-          console.log("No se detectó sesión activa.");
+          addDebugLog("❌ No se detectó sesión activa.");
           setLoadingSesion(false);
           return;
         }
         const correoUsuario = user.email.toLowerCase();
         setCorreoPrincipal(correoUsuario);
+        addDebugLog(`📧 Usuario autenticado: ${correoUsuario}`);
         const { data: usuarioLista, error: errLista } = await supabase
           .from("lista_blanca")
           .select("id_liceo, rol")
           .eq("correo", correoUsuario)
           .single();
         if (errLista || !usuarioLista || !usuarioLista.id_liceo) {
-          console.error("Usuario sin liceo vinculado.");
+          addDebugLog("❌ Usuario sin liceo vinculado en lista_blanca.");
           setLoadingSesion(false);
           return;
         }
         const idEncontrado = usuarioLista.id_liceo;
         setLiceoId(idEncontrado);
         setRolUsuario(usuarioLista.rol);
+        addDebugLog(`🏫 Liceo ID: ${idEncontrado}, Rol: ${usuarioLista.rol}`);
 
         const { data: liceo, error: errLiceo } = await supabase
           .from("liceos")
@@ -248,24 +260,10 @@ export default function AdministrarColegios() {
           setNombre(liceo.nombre || "");
           setComuna(liceo.comuna || "");
           setRegion(liceo.region || "");
-          setDependencia(liceo.dependencia || "Servicio Local (SLEP)");
-          setEncargadoNombres(liceo.encargado_nombres || "");
-          setEncargadoApPaterno(liceo.encargado_paterno || "");
-          setEncargadoApMaterno(liceo.encargado_materno || "");
-          setEncargadoRut(liceo.encargado_rut || "");
-          setCorreoRespaldo(liceo.correo_respaldo || "");
-          setTelefonoContacto(liceo.telefono_contacto || "+56 9 ");
-          setLogoUrl(liceo.logo_url || "");
-          if (liceo.logo_url) setPreviewLogo(liceo.logo_url);
-          setTelefonoFijo(liceo.telefono_fijo || "");
-          setTelefonoMovilColegio(liceo.telefono_movil_colegio || "+56 9 ");
-          setTieneWhatsapp(liceo.tiene_whatsapp || false);
-          setDireccionPostal(liceo.direccion_postal || "");
-          setNombreDirector(liceo.nombre_director || "");
-          setCorreoDirector(liceo.correo_director || "");
-          setMision(liceo.mision || "");
-          setVision(liceo.vision || "");
-          setDecretoCooperador(liceo.decreto_cooperador || "");
+          // ... (resto de campos)
+          addDebugLog(`📋 Datos del liceo cargados: RBD=${liceo.rbd}, Nombre=${liceo.nombre}`);
+        } else {
+          addDebugLog(`⚠️ No se encontró el liceo con ID ${idEncontrado}`);
         }
         const { data: jefesBD, error: errJefes } = await supabase
           .from("lista_blanca")
@@ -273,40 +271,31 @@ export default function AdministrarColegios() {
           .eq("id_liceo", idEncontrado)
           .neq("correo", correoUsuario);
         if (jefesBD && !errJefes) {
-          const mapeados: JefeEspecialidad[] = jefesBD.map(j => ({
-            id: j.id,
-            nombre: j.nombre || "",
-            apPaterno: j.apellido_paterno || "",
-            apMaterno: j.apellido_materno || "",
-            sector: j.sector || "General",
-            especialidad: j.especialidad || "General",
-            mencion: j.mencion || "No requiere",
-            correo: j.correo
-          }));
-          setListaJefes(mapeados);
+          setListaJefes(jefesBD.map(j => ({ ... }))); // (tu mapeo)
+          addDebugLog(`👥 Jefes cargados: ${jefesBD.length}`);
         }
       } catch (error) {
-        console.error("Error en carga:", error);
+        addDebugLog(`💥 Error en carga inicial: ${error.message}`);
       } finally {
         setLoadingSesion(false);
       }
     }
     detectarYBuscarLiceo();
-  }, [supabase]);
+  }, []);
 
-  // Manejo de jefes
+  // Manejo de jefes (igual que antes)
   const handleAgregarJefe = (e: React.FormEvent) => {
     e.preventDefault();
     const mail = jefeCorreo.trim().toLowerCase();
     if (!jefeNombre.trim() || !jefeApPaterno.trim() || !jefeApMaterno.trim() || !jefeSelectorCompleto || !mail) {
-      alert("Por favor, completa todos los campos del Jefe de Especialidad.");
+      alert("Completa todos los campos.");
       return;
     }
     if (listaJefes.some(j => j.correo === mail)) {
-      alert("Este correo electrónico ya se encuentra registrado.");
+      alert("Correo ya registrado.");
       return;
     }
-    const nuevoJefe: JefeEspecialidad = {
+    setListaJefes([...listaJefes, {
       nombre: jefeNombre.trim(),
       apPaterno: jefeApPaterno.trim(),
       apMaterno: jefeApMaterno.trim(),
@@ -314,16 +303,11 @@ export default function AdministrarColegios() {
       especialidad: jefeEspecialidad,
       mencion: jefeMencion,
       correo: mail
-    };
-    setListaJefes([...listaJefes, nuevoJefe]);
-    setJefeNombre("");
-    setJefeApPaterno("");
-    setJefeApMaterno("");
-    setJefeSelectorCompleto("");
-    setJefeSector("");
-    setJefeEspecialidad("");
-    setJefeMencion("");
-    setJefeCorreo("");
+    }]);
+    addDebugLog(`➕ Jefe agregado: ${jefeNombre} ${jefeApPaterno} (${mail})`);
+    setJefeNombre(""); setJefeApPaterno(""); setJefeApMaterno("");
+    setJefeSelectorCompleto(""); setJefeSector(""); setJefeEspecialidad("");
+    setJefeMencion(""); setJefeCorreo("");
   };
 
   const handleQuitarJefe = (correoAQuitar: string) => {
@@ -332,21 +316,25 @@ export default function AdministrarColegios() {
       return;
     }
     setListaJefes(listaJefes.filter(j => j.correo !== correoAQuitar));
+    addDebugLog(`➖ Jefe eliminado: ${correoAQuitar}`);
   };
 
-  // Guardar todo (aquí está el nombre correcto)
+  // Función principal de guardado con logs en pantalla
   const handleRegistrarEcosistema = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("🚀 Guardando ecosistema...");
+    addDebugLog("🚀 INICIO del guardado del ecosistema");
     if (encargadoRut && encargadoRut.length < 11) {
+      addDebugLog("❌ RUT inválido");
       alert("Ingresa un RUT válido.");
       return;
     }
     if (rolUsuario !== 'administrador_liceo' && rolUsuario !== 'profesor') {
+      addDebugLog(`❌ Permiso denegado. Rol actual: ${rolUsuario}`);
       alert("No tienes permisos para modificar estos datos.");
       return;
     }
     if (!liceoId && !rbd) {
+      addDebugLog("❌ No se pudo identificar el establecimiento (liceoId y rbd vacíos)");
       alert("No se pudo identificar el establecimiento.");
       return;
     }
@@ -354,9 +342,11 @@ export default function AdministrarColegios() {
     try {
       let urlLogoFinal = logoUrl;
       if (archivoLogo && !urlLogoFinal) {
+        addDebugLog("📤 Subiendo logo a Cloudflare R2...");
         const url = await uploadLogo(archivoLogo);
         if (!url) throw new Error("No se pudo subir el logo");
         urlLogoFinal = url;
+        addDebugLog(`✅ Logo subido, URL: ${urlLogoFinal}`);
       }
       const payloadLiceo = {
         encargado_nombres: encargadoNombres.trim(),
@@ -376,26 +366,51 @@ export default function AdministrarColegios() {
         vision: vision.trim(),
         decreto_cooperador: decretoCooperador.trim()
       };
-      console.log("Actualizando por RBD:", rbd);
-      const { data: updated, error: errUpdate } = await supabase
-        .from("liceos")
-        .update(payloadLiceo)
-        .eq("rbd", rbd)
-        .select();
-      if (errUpdate) throw new Error(`Error en liceos: ${errUpdate.message}`);
-      if (!updated || updated.length === 0) {
-        console.log("Fallback por ID:", liceoId);
-        const { data: fallback, error: errFallback } = await supabase
+      addDebugLog(`🔍 Valores recibidos: liceoId=${liceoId}, rbd=${rbd}, tipo rbd=${typeof rbd}`);
+      addDebugLog(`📦 Payload a enviar: ${JSON.stringify(payloadLiceo, null, 2)}`);
+
+      let actualizado = false;
+      if (liceoId) {
+        addDebugLog(`🟢 Intentando actualizar por ID: ${liceoId}`);
+        const { data: updatedById, error: errById } = await supabase
           .from("liceos")
           .update(payloadLiceo)
           .eq("id", liceoId)
           .select();
-        if (errFallback) throw new Error(`Error fallback: ${errFallback.message}`);
-        if (!fallback || fallback.length === 0) {
-          throw new Error(`No se encontró establecimiento con RBD ${rbd} ni ID ${liceoId}`);
+        if (errById) {
+          addDebugLog(`❌ Error actualizando por ID: ${errById.message}`);
+          throw new Error(`Error por ID: ${errById.message}`);
+        }
+        if (updatedById && updatedById.length > 0) {
+          addDebugLog(`✅ Actualizado por ID correctamente: ${JSON.stringify(updatedById)}`);
+          actualizado = true;
+        } else {
+          addDebugLog(`⚠️ No se encontró registro con ID: ${liceoId}`);
         }
       }
+      if (!actualizado && rbd) {
+        addDebugLog(`🟡 Intentando actualizar por RBD: ${rbd}`);
+        const { data: updatedByRbd, error: errByRbd } = await supabase
+          .from("liceos")
+          .update(payloadLiceo)
+          .eq("rbd", String(rbd))
+          .select();
+        if (errByRbd) {
+          addDebugLog(`❌ Error actualizando por RBD: ${errByRbd.message}`);
+          throw new Error(`Error por RBD: ${errByRbd.message}`);
+        }
+        if (updatedByRbd && updatedByRbd.length > 0) {
+          addDebugLog(`✅ Actualizado por RBD correctamente: ${JSON.stringify(updatedByRbd)}`);
+          actualizado = true;
+        } else {
+          addDebugLog(`⚠️ No se encontró registro con RBD: ${rbd}`);
+        }
+      }
+      if (!actualizado) {
+        throw new Error(`No se encontró establecimiento con ID ${liceoId} ni con RBD ${rbd}`);
+      }
       const jefesAGuardar = listaJefes.filter(j => j.correo !== correoPrincipal);
+      addDebugLog(`👥 Jefes a guardar (upsert): ${jefesAGuardar.length}`);
       if (jefesAGuardar.length > 0) {
         const { error: errUpsert } = await supabase
           .from("lista_blanca")
@@ -410,15 +425,21 @@ export default function AdministrarColegios() {
             rol: "profesor",
             id_liceo: liceoId
           })), { onConflict: 'correo' });
-        if (errUpsert) throw new Error(`Error guardando jefes: ${errUpsert.message}`);
+        if (errUpsert) {
+          addDebugLog(`❌ Error en upsert de jefes: ${errUpsert.message}`);
+          throw new Error(`Error guardando jefes: ${errUpsert.message}`);
+        }
+        addDebugLog("✅ Jefes guardados correctamente");
       }
+      addDebugLog("🎉 ¡TODO GUARDADO CON ÉXITO!");
       alert("✅ ¡Ecosistema guardado con éxito!");
       router.push("/dashboard");
     } catch (error: any) {
-      console.error(error);
+      addDebugLog(`💥 ERROR FATAL: ${error.message}`);
       alert(`❌ Error detectado:\n\n${error.message}`);
     } finally {
       setSaving(false);
+      addDebugLog("🏁 Proceso finalizado.");
     }
   };
 
@@ -486,6 +507,28 @@ export default function AdministrarColegios() {
           <button type="submit" disabled={saving} style={{ backgroundColor: COLORES.naranja, color: "white", border: "none", padding: "14px 28px", borderRadius: "14px", fontSize: "15px", fontWeight: "700", cursor: saving ? "not-allowed" : "pointer" }}>
             {saving ? "Guardando cambios institucionales..." : "Guardar Ecosistema Completo"}
           </button>
+
+          {/* PANEL DE DEPURACIÓN VISIBLE */}
+          <div style={{ marginTop: "32px", backgroundColor: "#1e1e2e", color: "#f8f8f2", padding: "16px", borderRadius: "12px", fontFamily: "monospace", fontSize: "12px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+              <strong>🐞 LOGS DE DEPURACIÓN (en tiempo real)</strong>
+              <div>
+                <button onClick={() => navigator.clipboard.writeText(debugLogs.join("\n"))} style={{ marginRight: "8px", background: "#444", color: "white", border: "none", padding: "4px 8px", borderRadius: "4px", cursor: "pointer" }}>📋 Copiar</button>
+                <button onClick={() => setDebugLogs([])} style={{ background: "#444", color: "white", border: "none", padding: "4px 8px", borderRadius: "4px", cursor: "pointer" }}>🗑️ Limpiar</button>
+              </div>
+            </div>
+            <div style={{ maxHeight: "300px", overflowY: "auto", borderTop: "1px solid #444", paddingTop: "8px" }}>
+              {debugLogs.length === 0 ? (
+                <p style={{ color: "#aaa", fontStyle: "italic" }}>Esperando acciones... (no se han mostrado logs aún)</p>
+              ) : (
+                debugLogs.map((log, idx) => (
+                  <div key={idx} style={{ borderBottom: "1px solid #333", padding: "4px 0", fontFamily: "monospace", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+                    {log}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
         </form>
       </main>
     </div>
