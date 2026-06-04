@@ -7,7 +7,6 @@ export async function POST(request: NextRequest) {
   try {
     const { filename, fileType, folder = "general" } = await request.json();
 
-    // Validar carpetas permitidas
     const allowedFolders = ["logos", "videos", "documentos", "perfiles", "general"];
     if (!allowedFolders.includes(folder)) {
       return NextResponse.json(
@@ -16,23 +15,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validar tipos de archivo
-    const allowedTypes = {
-      images: ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"],
-      videos: ["video/mp4", "video/webm", "video/quicktime"],
-      documents: ["application/pdf"]
-    };
+    const allowedTypes = [
+      "image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif",
+      "video/mp4", "video/webm", "video/quicktime",
+    ];
     
-    const allAllowed = [...allowedTypes.images, ...allowedTypes.videos, ...allowedTypes.documents];
-    
-    if (!allAllowed.includes(fileType)) {
+    if (!allowedTypes.includes(fileType)) {
       return NextResponse.json(
         { success: false, error: "Tipo de archivo no permitido" },
         { status: 400 }
       );
     }
 
-    // Generar nombre único
     const timestamp = Date.now();
     const randomId = Math.random().toString(36).substring(7);
     const cleanFilename = filename
@@ -41,8 +35,13 @@ export async function POST(request: NextRequest) {
       .replace(/[^a-zA-Z0-9.-]/g, "_");
     const key = `${folder}/${timestamp}-${randomId}-${cleanFilename}`;
 
+    const bucketName = process.env.R2_BUCKET_NAME;
+    if (!bucketName) {
+      throw new Error("R2_BUCKET_NAME no configurado");
+    }
+
     const command = new PutObjectCommand({
-      Bucket: process.env.R2_BUCKET_NAME!,
+      Bucket: bucketName,
       Key: key,
       ContentType: fileType,
     });
@@ -60,7 +59,7 @@ export async function POST(request: NextRequest) {
       key,
     });
   } catch (error: any) {
-    console.error("Error:", error);
+    console.error("Error generando URL firmada:", error);
     return NextResponse.json(
       { success: false, error: error.message || "Error interno" },
       { status: 500 }

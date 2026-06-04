@@ -25,13 +25,11 @@ export function useR2Upload({
     setError(null);
 
     try {
-      // Validar tamaño
       const maxSizeBytes = maxSizeMB * 1024 * 1024;
       if (file.size > maxSizeBytes) {
         throw new Error(`El archivo no puede superar ${maxSizeMB}MB`);
       }
 
-      // 1. Solicitar URL firmada
       const response = await fetch("/api/r2-upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -50,25 +48,17 @@ export function useR2Upload({
 
       const { signedUrl, publicUrl } = data;
 
-      // 2. Subir archivo con seguimiento de progreso
-      const uploadResponse = await new Promise<Response>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        
-        xhr.upload.addEventListener("progress", (e) => {
-          if (e.lengthComputable) {
-            const percentComplete = Math.round((e.loaded / e.total) * 100);
-            setProgress(percentComplete);
-            onProgress?.(percentComplete);
-          }
-        });
-
-        xhr.addEventListener("load", () => resolve(xhr.response));
-        xhr.addEventListener("error", () => reject(new Error("Error de red")));
-        
-        xhr.open("PUT", signedUrl);
-        xhr.setRequestHeader("Content-Type", file.type);
-        xhr.send(file);
+      const uploadResponse = await fetch(signedUrl, {
+        method: "PUT",
+        body: file,
+        headers: {
+          "Content-Type": file.type,
+        },
       });
+
+      if (!uploadResponse.ok) {
+        throw new Error(`Error HTTP: ${uploadResponse.status}`);
+      }
 
       setProgress(100);
       onSuccess?.(publicUrl);
