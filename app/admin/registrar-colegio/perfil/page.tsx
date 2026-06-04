@@ -408,7 +408,16 @@ export default function AdministrarColegios() {
       }
       console.log("📸 URL final del logo:", urlLogoFinal);
 
-      // PASO 2: Actualizar liceos usando RBD (único, seguro)
+      // ==========================================
+      // PASO 2: Actualizar liceos (primero por RBD, fallback por ID)
+      // ==========================================
+      console.log("🔍 RBD a buscar:", rbd, "tipo:", typeof rbd);
+      console.log("🔍 LiceoId actual:", liceoId);
+
+      if (!rbd) {
+        throw new Error("El RBD del establecimiento no está definido. Contacta al administrador.");
+      }
+
       const payloadLiceo = {
         encargado_nombres: encargadoNombres.trim(),
         encargado_paterno: encargadoApPaterno.trim(),
@@ -431,6 +440,7 @@ export default function AdministrarColegios() {
       console.log("📝 Actualizando liceos con RBD:", rbd);
       console.log("📦 Payload:", payloadLiceo);
 
+      // Realizamos la actualización por RBD
       const { data: updatedLiceo, error: errUpdate } = await supabase
         .from("liceos")
         .update(payloadLiceo)
@@ -438,14 +448,31 @@ export default function AdministrarColegios() {
         .select();
 
       if (errUpdate) {
-        console.error("❌ Error actualización:", errUpdate);
+        console.error("❌ Error en actualización por RBD:", errUpdate);
         throw new Error(`Error en tabla liceos: ${errUpdate.message}`);
       }
+
       if (!updatedLiceo || updatedLiceo.length === 0) {
-        console.warn("⚠️ No se encontró ningún liceo con RBD:", rbd);
-        throw new Error(`No se encontró un establecimiento con RBD ${rbd}`);
+        console.error("⚠️ No se encontró ningún liceo con RBD:", rbd);
+        // Intentar buscar por ID como respaldo
+        if (liceoId) {
+          console.log("🔄 Intentando actualizar por ID como respaldo...");
+          const { data: fallbackLiceo, error: errFallback } = await supabase
+            .from("liceos")
+            .update(payloadLiceo)
+            .eq("id", liceoId)
+            .select();
+          if (errFallback) throw new Error(`Error en actualización por ID: ${errFallback.message}`);
+          if (!fallbackLiceo || fallbackLiceo.length === 0) {
+            throw new Error(`No se encontró un establecimiento con RBD ${rbd} ni con ID ${liceoId}`);
+          }
+          console.log("✅ Liceo actualizado por ID (fallback):", fallbackLiceo);
+        } else {
+          throw new Error(`No se encontró un establecimiento con RBD ${rbd} y no hay ID de respaldo`);
+        }
+      } else {
+        console.log("✅ Liceo actualizado por RBD correctamente:", updatedLiceo);
       }
-      console.log("✅ Liceo actualizado:", updatedLiceo);
 
       // PASO 3: Guardar jefes de especialidad (upsert por correo)
       const jefesAGuardar = listaJefes.filter(j => j.correo !== correoPrincipal);
@@ -810,7 +837,7 @@ export default function AdministrarColegios() {
                             </button>
                           )}
                         </td>
-                      </tr>
+                      </td>
                     ))
                   )}
                 </tbody>
