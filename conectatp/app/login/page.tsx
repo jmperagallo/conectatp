@@ -1,6 +1,6 @@
 'use client';
 
-export const dynamic = 'force-dynamic'; // 🛠️ Solución para la compilación estática de Vercel
+export const dynamic = 'force-dynamic'; // Evita errores de compilación estática en Vercel
 
 import { useState, useEffect } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
@@ -15,13 +15,13 @@ export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // Inicialización correcta para componentes del cliente usando variables de entorno de Next.js
+  // Inicialización de Supabase con variables de entorno
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  // Capturar si el Callback nos devuelve un error de "no autorizado"
+  // Capturar errores devueltos en la URL
   useEffect(() => {
     const errorType = searchParams.get('error');
     if (errorType === 'no-autorizado') {
@@ -57,7 +57,6 @@ export default function LoginPage() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        // Redirige al puente de seguridad que creamos en el paso anterior
         redirectTo: `${window.location.origin}/auth/callback`,
       },
     });
@@ -78,7 +77,7 @@ export default function LoginPage() {
           <p style={{ color: '#6b7280', margin: 0, fontSize: '14px' }}>Plataforma de Prácticas Profesionales</p>
         </div>
 
-        {/* Alertas de error sanitizadas */}
+        {/* Alertas de error */}
         {errorMsg && (
           <div style={{ backgroundColor: '#fef2f2', borderLeft: '4px solid #ef4444', color: '#991b1b', padding: '12px', borderRadius: '6px', fontSize: '14px', marginBottom: '20px', lineHeight: '1.4' }}>
             {errorMsg}
@@ -97,7 +96,7 @@ export default function LoginPage() {
             <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '14px', boxSizing: 'border-box' }} />
           </div>
 
-          <button type="submit" disabled={loading} style={{ width: '100%', backgroundColor: '#2563eb', color: '#ffffff', padding: '12px', border: 'none', borderRadius: '6px', fontSize: '14px', fontWeight: '600', cursor: 'pointer', transition: 'background-color 0.2s' }}>
+          <button type="submit" disabled={loading} style={{ width: '100%', backgroundColor: '#2563eb', color: '#ffffff', padding: '12px', border: 'none', borderRadius: '6px', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>
             {loading ? 'Cargando...' : 'Iniciar Sesión'}
           </button>
         </form>
@@ -122,4 +121,5 @@ export default function LoginPage() {
 
       </div>
     </div>
-  )
+  );
+}
