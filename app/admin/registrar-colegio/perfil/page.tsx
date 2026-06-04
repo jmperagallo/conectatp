@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { createBrowserClient } from "@supabase/ssr";
-import { useRouter } from "next/navigation";
-import { School, ClipboardList, Mail, ShieldAlert, Plus, X } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { School, ClipboardList, Mail, ShieldAlert, Plus, X, User, Phone, Info, MapPin, Upload, Image as ImageIcon, Briefcase } from "lucide-react";
 import Header from "@/app/components/Header";
 
 const COLORES = {
@@ -15,139 +15,434 @@ const COLORES = {
   grisClaro: "#64748b"
 };
 
+const MAPA_REGIONES: { [key: string]: string } = {
+  "AYP": "Arica y Parinacota",
+  "TAP": "Tarapacá",
+  "ANTOF": "Antofagasta",
+  "ATACAMA": "Atacama",
+  "COQUIMBO": "Coquimbo",
+  "VALPO": "Valparaíso",
+  "RM": "Metropolitana de Santiago",
+  "OHIGGINS": "O'Higgins",
+  "MAULE": "Maule",
+  "NUBLE": "Ñuble",
+  "BIOBIO": "Bío Bío",
+  "ARAUCANIA": "La Araucanía",
+  "LOSRIOS": "Los Ríos",
+  "LOSLAGOS": "Los Lagos",
+  "AYSEN": "Aysén del G. Carlos Ibáñez del Campo",
+  "MAGALLANES": "Magallanes y de la Antártica Chilena"
+};
+
+const ESTRUCTURA_TP_CHILE: {
+  [sector: string]: {
+    [especialidad: string]: string[];
+  };
+} = {
+  "Administración y Comercio": {
+    "Administración": ["Mención Logística", "Mención Recursos Humanos"],
+    "Contabilidad": []
+  },
+  "Agropecuario": {
+    "Agropecuaria": ["Mención Agricultura", "Mención Ganadería", "Mención Vitivinícola"]
+  },
+  "Alimentación": {
+    "Elaboración Industrial de Alimentos": [],
+    "Gastronomía": ["Mención Cocina", "Mención Pastelería y Repostería"]
+  },
+  "Construcción": {
+    "Construcción": ["Mención Edificación", "Mención Obras de Vialidad e Infraestructura", "Mención Terminaciones de la Construcción"],
+    "Construcciones Metálicas": [],
+    "Instalaciones Sanitarias": []
+  },
+  "Electricidad": {
+    "Electricidad": [],
+    "Electrónica": []
+  },
+  "Hotelería y Turismo": {
+    "Hotelería": [],
+    "Servicios de Turismo": []
+  },
+  "Marítimo": {
+    "Acuicultura": [],
+    "Tripulación de Naves Mercantes y Especiales": []
+  },
+  "Metalmecánico": {
+    "Mecánica Automotriz": [],
+    "Mecánica Industrial": ["Mención Mantenimiento Electromecánico", "Mención Máquinas-Herramientas", "Mención Matricería"],
+    "Refrigeración y Climatización": []
+  },
+  "Minería": {
+    "Explotación Minera": [],
+    "Metalurgia Extractiva": [],
+    "Asistencia en Geología": []
+  },
+  "Química": {
+    "Operación Planta Química": [],
+    "Química Industrial": ["Mención Laboratorio Químico", "Mención Planta Química"]
+  },
+  "Salud y Educación": {
+    "Asistencia de Párvulos": [],
+    "Atención de Enfermería": [],
+    "Atención Social y Recreativa": []
+  },
+  "Tecnología y Comunicaciones": {
+    "Conectividad y Redes": [],
+    "Programación": [],
+    "Telecomunicaciones": []
+  },
+  "Maderero": {
+    "Forestal": [],
+    "Procesamiento de la Madera": []
+  },
+  "Gráfico": {
+    "Dibujo Técnico": [],
+    "Gráfica": []
+  },
+  "Confección": {
+    "Tejido": [],
+    "Vestuario y Confección Industrial": []
+  }
+};
+
+interface JefeEspecialidad {
+  id?: string;
+  nombre: string;
+  apPaterno: string;
+  apMaterno: string;
+  sector: string;
+  especialidad: string;
+  mencion: string;
+  correo: string;
+}
+
 export default function AdministrarColegios() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const idUrl = searchParams.get("id");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
   const [saving, setSaving] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
 
-  // Estados del Formulario (Liceo)
+  // SECCIÓN 1: Establecimiento
   const [rbd, setRbd] = useState("");
   const [nombre, setNombre] = useState("");
   const [comuna, setComuna] = useState("");
   const [region, setRegion] = useState("");
   const [dependencia, setDependencia] = useState("Servicio Local (SLEP)");
 
-  // Estados para la gestión de correos (Lista Blanca)
-  const [correoInput, setCorreoInput] = useState("");
-  const [listaCorreos, setListaCorreos] = useState<string[]>([]);
+  // SECCIÓN 2: Encargado / Coordinador TP
+  const [encargadoNombres, setEncargadoNombres] = useState("");
+  const [encargadoApPaterno, setEncargadoApPaterno] = useState("");
+  const [encargadoApMaterno, setEncargadoApMaterno] = useState("");
+  const [encargadoRut, setEncargadoRut] = useState("");
+  const [correoPrincipal, setCorreoPrincipal] = useState(""); 
+  const [correoRespaldo, setCorreoRespaldo] = useState("");
+  const [telefonoContacto, setTelefonoContacto] = useState("+56 9 ");
+
+  // SECCIÓN 3: Información Colegial
+  const [logoUrl, setLogoUrl] = useState("");
+  const [previewLogo, setPreviewLogo] = useState<string | null>(null);
+  const [archivoLogo, setArchivoLogo] = useState<File | null>(null);
+  const [telefonoFijo, setTelefonoFijo] = useState("");
+  const [telefonoMovilColegio, setTelefonoMovilColegio] = useState("+56 9 ");
+  const [tieneWhatsapp, setTieneWhatsapp] = useState(false);
+  const [direccionPostal, setDireccionPostal] = useState("");
+  const [nombreDirector, setNombreDirector] = useState("");
+  const [correoDirector, setCorreoDirector] = useState("");
+  const [mision, setMision] = useState("");
+  const [vision, setVision] = useState("");
+  const [decretoCooperador, setDecretoCooperador] = useState("");
+
+  // SECCIÓN 4: Estados Estructurados para el Jefe de Especialidad
+  const [jefeNombre, setJefeNombre] = useState("");
+  const [jefeApPaterno, setJefeApPaterno] = useState("");
+  const [jefeApMaterno, setJefeApMaterno] = useState("");
+  const [jefeSelectorCompleto, setJefeSelectorCompleto] = useState(""); 
+  const [jefeSector, setJefeSector] = useState("");
+  const [jefeEspecialidad, setJefeEspecialidad] = useState("");
+  const [jefeMencion, setJefeMencion] = useState("");
+  const [jefeCorreo, setJefeCorreo] = useState("");
+  const [listaJefes, setListaJefes] = useState<JefeEspecialidad[]>([]);
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  // Agregar correo al listado temporal (Evita burbujeo del formulario)
-  const handleAgregarCorreo = (e: React.FormEvent) => {
+  // Formateadores estándar originales
+  const formatRut = (value: string) => {
+    let actual = value.replace(/[^0-9kK]/g, "").toUpperCase();
+    if (actual.length <= 1) return actual;
+    let dv = actual.slice(-1);
+    let numerico = actual.slice(0, -1);
+    let formateado = "";
+    if (numerico.length > 5) {
+      formateado = numerico.slice(0, -5) + "." + numerico.slice(-5, -2) + "." + numerico.slice(-2);
+    } else if (numerico.length > 2) {
+      formateado = numerico.slice(0, -2) + "." + numerico.slice(-2);
+    } else {
+      formateado = numerico;
+    }
+    return formateado + "-" + dv;
+  };
+
+  const handleTelefonoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.target.value;
+    if (!input.startsWith("+56 9 ")) { setTelefonoContacto("+56 9 "); return; }
+    const numerosSolo = input.slice(6).replace(/\D/g, "");
+    const numerosLimitados = numerosSolo.slice(0, 8);
+    let formateado = numerosLimitados.length > 4 ? numerosLimitados.slice(0, 4) + " " + numerosLimitados.slice(4) : numerosLimitados;
+    setTelefonoContacto("+56 9 " + formateado);
+  };
+
+  const handleTelefonoColegioChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.target.value;
+    if (!input.startsWith("+56 9 ")) { setTelefonoMovilColegio("+56 9 "); return; }
+    const numerosSolo = input.slice(6).replace(/\D/g, "");
+    const numerosLimitados = numerosSolo.slice(0, 8);
+    let formateado = numerosLimitados.length > 4 ? numerosLimitados.slice(0, 4) + " " + numerosLimitados.slice(4) : numerosLimitados;
+    setTelefonoMovilColegio("+56 9 " + formateado);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setArchivoLogo(file);
+      const reader = new FileReader();
+      reader.onloadend = () => { setPreviewLogo(reader.result as string); };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // Cargar datos institucionales desde Supabase
+  useEffect(() => {
+    async function cargarDatosLiceo() {
+      if (!idUrl) return;
+      setIsEditing(true);
+      
+      const { data: liceo, error: errLiceo } = await supabase
+        .from("liceos")
+        .select("*")
+        .eq("id", idUrl)
+        .single();
+
+      if (liceo && !errLiceo) {
+        setRbd(liceo.rbd || "");
+        setNombre(liceo.nombre || "");
+        setComuna(liceo.comuna || "");
+        
+        const siglaBaseDatos = liceo.region || "";
+        if (MAPA_REGIONES[siglaBaseDatos.toUpperCase()]) {
+          setRegion(MAPA_REGIONES[siglaBaseDatos.toUpperCase()]);
+        } else {
+          setRegion(siglaBaseDatos);
+        }
+
+        if (liceo.dependencia) setDependencia(liceo.dependencia);
+
+        setEncargadoNombres(liceo.encargado_nombres || "");
+        setEncargadoApPaterno(liceo.encargado_paterno || "");
+        setEncargadoApMaterno(liceo.encargado_materno || "");
+        setEncargadoRut(liceo.encargado_rut || "");
+        setCorreoRespaldo(liceo.correo_respaldo || "");
+        if (liceo.telefono_contacto) setTelefonoContacto(liceo.telefono_contacto);
+
+        setLogoUrl(liceo.logo_url || "");
+        if (liceo.logo_url) setPreviewLogo(liceo.logo_url);
+        setTelefonoFijo(liceo.telefono_fijo || "");
+        if (liceo.telefono_movil_colegio) setTelefonoMovilColegio(liceo.telefono_movil_colegio);
+        setTieneWhatsapp(liceo.tiene_whatsapp || false);
+        setDireccionPostal(liceo.direccion_postal || "");
+        setNombreDirector(liceo.nombre_director || "");
+        setCorreoDirector(liceo.correo_director || "");
+        setMision(liceo.mision || "");
+        setVision(liceo.vision || "");
+        setDecretoCooperador(liceo.decreto_cooperador || "");
+      }
+
+      // Cargar lista blanca vinculada
+      const { data: jefesBD, error: errJefes } = await supabase
+        .from("lista_blanca")
+        .select("*")
+        .eq("id_liceo", idUrl);
+
+      if (jefesBD && !errJefes) {
+        const mapeados: JefeEspecialidad[] = jefesBD.map(j => ({
+          id: j.id,
+          nombre: j.nombre || "",
+          apPaterno: j.apellido_paterno || "",
+          apMaterno: j.apellido_materno || "",
+          sector: j.sector || "General",
+          especialidad: j.especialidad || (j.rol === "master" ? "Administración General" : "General"),
+          mencion: j.mencion || "No requiere",
+          correo: j.correo
+        }));
+        setListaJefes(mapeados);
+
+        const master = jefesBD.find(j => j.rol === "master") || jefesBD[0];
+        if (master) setCorreoPrincipal(master.correo);
+      }
+    }
+
+    cargarDatosLiceo();
+  }, [idUrl, supabase]);
+
+  const handleAgregarJefe = (e: React.FormEvent) => {
     e.preventDefault();
-    e.stopPropagation();
+    const mail = jefeCorreo.trim().toLowerCase();
     
-    const email = correoInput.trim().toLowerCase();
-    if (!email) return;
-    
-    if (listaCorreos.includes(email)) {
-      alert("Este correo ya está en la lista por registrar.");
+    if (!jefeNombre.trim() || !jefeApPaterno.trim() || !jefeApMaterno.trim() || !jefeSelectorCompleto || !mail) {
+      alert("Por favor, completa todos los campos del Jefe de Especialidad.");
       return;
     }
-    setListaCorreos([...listaCorreos, email]);
-    setCorreoInput("");
+
+    if (listaJefes.some(j => j.correo === mail)) {
+      alert("Este correo electrónico ya se encuentra registrado para un módulo en este liceo.");
+      return;
+    }
+
+    const nuevoJefe: JefeEspecialidad = {
+      nombre: jefeNombre.trim(),
+      apPaterno: jefeApPaterno.trim(),
+      apMaterno: jefeApMaterno.trim(),
+      sector: jefeSector,
+      especialidad: jefeEspecialidad,
+      mencion: jefeMencion,
+      correo: mail
+    };
+
+    setListaJefes([...listaJefes, nuevoJefe]);
+
+    setJefeNombre("");
+    setJefeApPaterno("");
+    setJefeApMaterno("");
+    setJefeSelectorCompleto("");
+    setJefeSector("");
+    setJefeEspecialidad("");
+    setJefeMencion("");
+    setJefeCorreo("");
   };
 
-  // Quitar correo del listado temporal
-  const handleQuitarCorreo = (correoAQuitar: string) => {
-    setListaCorreos(listaCorreos.filter((c) => c !== correoAQuitar));
+  const handleQuitarJefe = (correoAQuitar: string) => {
+    if (correoAQuitar === correoPrincipal) {
+      alert("No puedes eliminar al Administrador Principal Máster de la nómina.");
+      return;
+    }
+    setListaJefes(listaJefes.filter(j => j.correo !== correoAQuitar));
   };
 
-  // Guardar en la Base de Datos (VERSIÓN DIAGNÓSTICO EXTREMO)
+  // Guardado optimizado y blindado contra errores indefinidos de lectura
   const handleRegistrarEcosistema = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!rbd.trim() || !nombre.trim()) {
-      alert("Por favor, completa los datos obligatorios (RBD y Nombre).");
-      return;
-    }
-
-    if (listaCorreos.length === 0) {
-      alert("Debes añadir al menos un correo con el botón '+ Añadir' antes de registrar.");
+    
+    // Validación de RUT segura usando salvaguarda para evitar caídas por longitud indefinida
+    if (encargadoRut && encargadoRut.trim().length < 11) {
+      alert("Por favor, ingresa un RUT válido en formato completo (ej: 12.345.678-K).");
       return;
     }
 
     setSaving(true);
-    let liceoId = null;
 
     try {
-      // 1. Intentar insertar o buscar el liceo en la tabla 'liceos'
-      const { data: nuevoLiceo, error: errLiceo } = await supabase
-        .from("liceos")
-        .insert({
-          rbd: rbd.trim(),
-          nombre: nombre.trim().toUpperCase(),
-          comuna: comuna.trim(),
-          region: region.trim()
-        })
-        .select("id")
-        .single();
+      let urlLogoFinal = logoUrl;
 
-      if (errLiceo) {
-        if (errLiceo.code === "23505") {
-          const { data: liceoExistente } = await supabase
-            .from("liceos")
-            .select("id")
-            .eq("rbd", rbd.trim())
-            .single();
-          liceoId = liceoExistente?.id;
-        } else {
-          throw new Error(`ERROR AL INSERTAR LICEO: ${errLiceo.message}`);
+      // Subida de imagen a Cloudflare R2
+      if (archivoLogo) {
+        try {
+          const uploadFormData = new FormData();
+          uploadFormData.append("file", archivoLogo);
+          uploadFormData.append("rbd", rbd || "colegio");
+
+          const responseR2 = await fetch("/api/upload-logo", {
+            method: "POST",
+            body: uploadFormData,
+          });
+
+          const dataR2 = await responseR2.json();
+
+          if (dataR2.success) {
+            urlLogoFinal = dataR2.url; 
+          } else {
+            console.error("Error devuelto por R2 API:", dataR2.error);
+            alert("Aviso: No se pudo subir la insignia a Cloudflare, pero guardaremos el resto de los datos.");
+          }
+        } catch (errLogo) {
+          console.error("Fallo de red al conectar con Cloudflare R2:", errLogo);
         }
-      } else if (nuevoLiceo) {
-        liceoId = nuevoLiceo.id;
       }
 
-      if (!liceoId) throw new Error("Fallo crítico: No se pudo obtener o recuperar el ID del establecimiento.");
+      // Actualizar datos del Liceo en la base de datos
+      if (isEditing && idUrl) {
+        const { error: errUpdate } = await supabase
+          .from("liceos")
+          .update({
+            encargado_nombres: (encargadoNombres || "").trim(),
+            encargado_paterno: (encargadoApPaterno || "").trim(),
+            encargado_materno: (encargadoApMaterno || "").trim(),
+            encargado_rut: (encargadoRut || "").trim(),
+            correo_respaldo: (correoRespaldo || "").trim().toLowerCase(),
+            telefono_contacto: (telefonoContacto || "").trim(),
+            logo_url: urlLogoFinal, 
+            telefono_fijo: (telefonoFijo || "").trim(),
+            telefono_movil_colegio: (telefonoMovilColegio || "").trim(),
+            tiene_whatsapp: tieneWhatsapp || false,
+            direccion_postal: (direccionPostal || "").trim(),
+            nombre_director: (nombreDirector || "").trim(),
+            correo_director: (correoDirector || "").trim().toLowerCase(),
+            mision: (mision || "").trim(),
+            vision: (vision || "").trim(),
+            decreto_cooperador: (decretoCooperador || "").trim()
+          })
+          .eq("id", idUrl);
 
-      // 2. Preparar el arreglo de objetos para la lista blanca
-      const payloadsListaBlanca = listaCorreos.map((correo) => ({
-        correo: correo,
-        rol: "institucion", // Asegúrate de que coincida con tu tipo ENUM de Postgres
-        id_liceo: liceoId
-      }));
+        if (errUpdate) throw new Error(`Error al actualizar tabla liceos: ${errUpdate.message}`);
 
-      // 3. Forzar inserción y capturar la respuesta explícita
-      const respuestaSupabase = await supabase
-        .from("lista_blanca")
-        .insert(payloadsListaBlanca)
-        .select();
-
-      // 4. Ventana de análisis en caliente
-      if (respuestaSupabase.error) {
-        alert(
-          `🚨 FALLO DETECTADO EN SUPABASE 🚨\n\n` +
-          `Código Postgres: ${respuestaSupabase.error.code}\n` +
-          `Mensaje: ${respuestaSupabase.error.message}\n` +
-          `Detalles técnicos: ${respuestaSupabase.error.details || "Ninguno"}\n\n` +
-          `💡 Nota: Si el error menciona un "invalid input value for enum", debes revisar cómo escribiste el rol.`
-        );
-      } else {
-        alert(
-          `✅ ¡ÉXITO TOTAL EN LA BASE DE DATOS! ✅\n\n` +
-          `Se registraron correctamente los datos en 'lista_blanca'.\n` +
-          `Respuesta devuelta: ${JSON.stringify(respuestaSupabase.data, null, 2)}`
-        );
+        // Eliminar registros anteriores de lista_blanca que no correspondan al máster
+        await supabase.from("lista_blanca").delete().eq("id_liceo", idUrl).neq("correo", correoPrincipal);
         
-        // Limpiar formulario tras el éxito confirmado
-        setRbd("");
-        setNombre("");
-        setComuna("");
-        setRegion("");
-        setListaCorreos([]);
+        // Filtrar y preparar la inserción controlando datos limpios
+        const jefesAInsertar = listaJefes.filter(j => j.correo && j.correo.trim().toLowerCase() !== (correoPrincipal || "").trim().toLowerCase());
         
-        router.push("/dashboard");
+        if (jefesAInsertar.length > 0) {
+          const payloads = jefesAInsertar.map(j => ({
+            correo: j.correo.trim().toLowerCase(),
+            nombre: j.nombre.trim(),
+            apellido_paterno: j.apPaterno.trim(),
+            apellido_materno: j.apMaterno.trim(),
+            sector: j.sector || "General",
+            especialidad: j.especialidad || "General",
+            mencion: j.mencion || "No requiere",
+            rol: "institucion", 
+            id_liceo: idUrl
+          }));
+
+          const { error: errJefes } = await supabase.from("lista_blanca").insert(payloads);
+          if (errJefes) {
+            console.error("Error al insertar jefes en lista_blanca:", errJefes);
+            alert(`Los datos principales del liceo se guardaron, pero ocurrió un problema al añadir los Jefes de Especialidad: ${errJefes.message}`);
+          }
+        }
       }
 
+      alert("✅ ¡Ecosistema e Información de Jefes por Especialidad guardada con éxito!");
+      router.push("/dashboard");
     } catch (error: any) {
-      alert(`💥 ERROR EXCEPCIONAL DEL CÓDIGO:\n${error.message}`);
+      console.error("Error global de guardado:", error);
+      alert(`💥 Error al guardar:\n${error.message}`);
     } finally {
       setSaving(false);
     }
   };
+
+  const getInputStyle = (disabled: boolean) => ({
+    ...inputStyle,
+    backgroundColor: disabled ? "#f1f5f9" : "white",
+    color: disabled ? "#64748b" : COLORES.texto,
+    cursor: disabled ? "not-allowed" : "text",
+    border: disabled ? "1px solid #cbd5e1" : `1px solid ${COLORES.borde}`
+  });
 
   return (
     <div style={{ minHeight: "100vh", backgroundColor: COLORES.fondo, fontFamily: "system-ui, sans-serif", display: "flex", flexDirection: "column" }}>
@@ -156,111 +451,340 @@ export default function AdministrarColegios() {
       <main style={{ flex: 1, display: "flex", justifyContent: "center", padding: "40px 24px" }}>
         <form onSubmit={handleRegistrarEcosistema} style={{ width: "100%", maxWidth: "750px", display: "flex", flexDirection: "column", gap: "24px" }}>
           
+          {/* BANNER 1 */}
           <div style={{ backgroundColor: "#fff7ed", borderRadius: "16px", padding: "20px", border: "1px solid #ffedd5", display: "flex", gap: "14px", alignItems: "center" }}>
             <ShieldAlert size={24} color={COLORES.naranja} style={{ flexShrink: 0 }} />
             <p style={{ fontSize: "14px", color: "#9a3412", margin: 0, lineHeight: "1.4" }}>
-              <strong>Panel Super Root Inteligente:</strong> Si ingresas un RBD existente, el sistema recuperará su enlace para asociar los correos sin generar errores de duplicidad.
+              <strong>Ecosistema de Seguridad ConectaTP:</strong> Los datos clave del liceo y su cuenta máster están blindados. Puedes registrar credenciales alternativas y configurar a tu equipo de coordinación a continuación.
             </p>
           </div>
 
-          {/* Sección 1: Datos del Establecimiento */}
+          {/* BANNER 2 */}
+          <div style={{ backgroundColor: "#eff6ff", borderRadius: "16px", padding: "20px", border: "1px solid #dbeafe", display: "flex", gap: "14px", alignItems: "center" }}>
+            <ClipboardList size={24} color="#3b82f6" style={{ flexShrink: 0 }} />
+            <p style={{ fontSize: "14px", color: "#1e40af", margin: 0, lineHeight: "1.4" }}>
+              <strong>Ficha del Establecimiento:</strong> Completa detalladamente la visión técnica del establecimiento. Toda esta información nutrirá el portafolio automatizado que verán las empresas aliadas de la red.
+            </p>
+          </div>
+
+          {/* 1. Datos del Establecimiento */}
           <div style={{ backgroundColor: "white", borderRadius: "24px", padding: "30px", border: `1px solid ${COLORES.borde}`, boxShadow: "0 4px 10px rgba(0,0,0,0.02)" }}>
             <h2 style={{ fontSize: "16px", fontWeight: 700, color: COLORES.azul, margin: "0 0 20px 0", display: "flex", alignItems: "center", gap: "8px", textTransform: "uppercase" }}>
               <School size={18} color={COLORES.naranja} /> 1. Datos del Establecimiento
             </h2>
-            
             <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: "16px" }}>
                 <div>
-                  <label style={labelStyle}>RBD Mineduc *</label>
-                  <input type="text" required placeholder="Ej: 9421" style={inputStyle} value={rbd} onChange={(e) => setRbd(e.target.value)} />
+                  <label style={labelStyle}>RBD Mineduc</label>
+                  <input type="text" style={getInputStyle(true)} value={rbd} disabled />
                 </div>
                 <div>
-                  <label style={labelStyle}>Nombre del Establecimiento *</label>
-                  <input type="text" required placeholder="Ej: LICEO POLITECNICO" style={inputStyle} value={nombre} onChange={(e) => setNombre(e.target.value)} />
+                  <label style={labelStyle}>Nombre del Establecimiento</label>
+                  <input type="text" style={getInputStyle(true)} value={nombre} disabled />
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+                <div>
+                  <label style={labelStyle}>Comuna</label>
+                  <input type="text" style={getInputStyle(true)} value={comuna} disabled />
+                </div>
+                <div>
+                  <label style={labelStyle}>Región</label>
+                  <input type="text" style={getInputStyle(true)} value={region} disabled />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 2. Datos del Encargado / Coordinador TP */}
+          <div style={{ backgroundColor: "white", borderRadius: "24px", padding: "30px", border: `1px solid ${COLORES.borde}`, boxShadow: "0 4px 10px rgba(0,0,0,0.02)" }}>
+            <h2 style={{ fontSize: "16px", fontWeight: 700, color: COLORES.azul, margin: "0 0 20px 0", display: "flex", alignItems: "center", gap: "8px", textTransform: "uppercase" }}>
+              <User size={18} color={COLORES.naranja} /> 2. Datos del Encargado / Coordinador TP
+            </h2>
+            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "2fr 1.5fr 1.5fr", gap: "16px" }}>
+                <div>
+                  <label style={labelStyle}>Nombres *</label>
+                  <input type="text" required placeholder="Ej: Juan Carlos" style={inputStyle} value={encargadoNombres} onChange={(e) => setEncargadoNombres(e.target.value)} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Apellido Paterno *</label>
+                  <input type="text" required placeholder="Ej: Pérez" style={inputStyle} value={encargadoApPaterno} onChange={(e) => setEncargadoApPaterno(e.target.value)} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Apellido Materno *</label>
+                  <input type="text" required placeholder="Ej: Galdames" style={inputStyle} value={encargadoApMaterno} onChange={(e) => setEncargadoApMaterno(e.target.value)} />
                 </div>
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
                 <div>
-                  <label style={labelStyle}>Comuna</label>
-                  <input type="text" placeholder="Ej: Arica" style={inputStyle} value={comuna} onChange={(e) => setComuna(e.target.value)} />
+                  <label style={labelStyle}>RUT Encargado * (xx.xxx.xxx-x)</label>
+                  <input type="text" required maxLength={12} placeholder="Ej: 12.345.678-K" style={inputStyle} value={encargadoRut} onChange={(e) => setEncargadoRut(formatRut(e.target.value))} />
                 </div>
                 <div>
-                  <label style={labelStyle}>Región</label>
-                  <input type="text" placeholder="Ej: AYP" style={inputStyle} value={region} onChange={(e) => setRegion(e.target.value)} />
+                  <label style={labelStyle}>Teléfono de Contacto Móvil *</label>
+                  <input type="text" required placeholder="+56 9 XXXX XXXX" style={inputStyle} value={telefonoContacto} onChange={handleTelefonoChange} />
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+                <div>
+                  <label style={labelStyle}>Correo Electrónico Principal (🔒 Bloqueado)</label>
+                  <input type="text" style={getInputStyle(true)} value={correoPrincipal || "cargando..."} disabled />
+                </div>
+                <div>
+                  <label style={labelStyle}>Correo Electrónico de Respaldo</label>
+                  <input type="email" placeholder="Ej: cuenta.alternativa@liceo.cl" style={inputStyle} value={correoRespaldo} onChange={(e) => setCorreoRespaldo(e.target.value)} />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 3. Información Colegial */}
+          <div style={{ backgroundColor: "white", borderRadius: "24px", padding: "30px", border: `1px solid ${COLORES.borde}`, boxShadow: "0 4px 10px rgba(0,0,0,0.02)" }}>
+            <h2 style={{ fontSize: "16px", fontWeight: 700, color: COLORES.azul, margin: "0 0 20px 0", display: "flex", alignItems: "center", gap: "8px", textTransform: "uppercase" }}>
+              <School size={18} color={COLORES.naranja} /> 3. Información Colegial
+            </h2>
+            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: "24px", alignItems: "center", background: "#f8fafc", padding: "20px", borderRadius: "16px", border: `1px dashed ${COLORES.borde}` }}>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "130px", backgroundColor: "white", borderRadius: "12px", border: `1px solid ${COLORES.borde}`, overflow: "hidden" }}>
+                  {previewLogo ? (
+                    <img src={previewLogo} alt="Insignia Colegio" style={{ width: "100%", height: "100%", objectFit: "contain", padding: "10px" }} />
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", color: COLORES.grisClaro }}>
+                      <ImageIcon size={32} style={{ opacity: 0.5, marginBottom: "4px" }} />
+                      <span style={{ fontSize: "11px" }}>Sin Insignia</span>
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label style={labelStyle}>Insignia / Logo Oficial del Establecimiento</label>
+                  <input type="file" ref={fileInputRef} accept="image/*" onChange={handleFileChange} style={{ display: "none" }} />
+                  <div onClick={() => fileInputRef.current?.click()} style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "20px", border: `2px dashed ${COLORES.naranja}`, borderRadius: "12px", backgroundColor: "#fffbfa", cursor: "pointer" }}>
+                    <Upload size={22} color={COLORES.naranja} style={{ marginBottom: "6px" }} />
+                    <span style={{ fontSize: "13px", fontWeight: "700", color: COLORES.azul }}>Haz clic para cargar imagen</span>
+                  </div>
                 </div>
               </div>
 
               <div>
-                <label style={labelStyle}>Dependencia administrativa</label>
-                <select style={inputStyle} value={dependencia} onChange={(e) => setDependencia(e.target.value)}>
-                  <option>Servicio Local (SLEP)</option>
-                  <option>Municipal</option>
-                  <option>Particular Subvencionado</option>
-                </select>
+                <label style={labelStyle}>Decreto Cooperador / Res. Exenta Mineduc</label>
+                <input type="text" placeholder="Ej: Decreto N° 4250 / 1998" style={inputStyle} value={decretoCooperador} onChange={(e) => setDecretoCooperador(e.target.value)} />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+                <div>
+                  <label style={labelStyle}>Teléfono de Red Fija</label>
+                  <input type="text" placeholder="Ej: +56 58 222 XXXX" style={inputStyle} value={telefonoFijo} onChange={(e) => setTelefonoFijo(e.target.value)} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Teléfono Móvil del Establecimiento</label>
+                  <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+                    <input type="text" placeholder="+56 9 XXXX XXXX" style={{ ...inputStyle, flex: 2 }} value={telefonoMovilColegio} onChange={handleTelefonoColegioChange} />
+                    <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", fontWeight: "700", color: COLORES.texto, cursor: "pointer", userSelect: "none" }}>
+                      <input type="checkbox" checked={tieneWhatsapp} onChange={(e) => setTieneWhatsapp(e.target.checked)} style={{ width: "16px", height: "16px", accentColor: "#16a34a" }} />
+                      ¿WhatsApp?
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label style={labelStyle}>Dirección Postal</label>
+                <div style={{ position: "relative" }}>
+                  <MapPin size={16} color={COLORES.grisClaro} style={{ position: "absolute", left: "12px", top: "14px" }} />
+                  <input type="text" placeholder="Ej: Avenida Diego Portales #1230" style={{ ...inputStyle, paddingLeft: "36px" }} value={direccionPostal} onChange={(e) => setDireccionPostal(e.target.value)} />
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", borderTop: `1px dashed ${COLORES.borde}`, paddingTop: "16px" }}>
+                <div>
+                  <label style={labelStyle}>Nombre de el/la Director(a)</label>
+                  <input type="text" placeholder="Ej: Marta Silva Fuentealba" style={inputStyle} value={nombreDirector} onChange={(e) => setNombreDirector(e.target.value)} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Correo de el/la Director(a)</label>
+                  <input type="email" placeholder="Ej: direccion@liceo.cl" style={inputStyle} value={correoDirector} onChange={(e) => setCorreoDirector(e.target.value)} />
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+                <div>
+                  <label style={labelStyle}>Misión Institucional</label>
+                  <textarea placeholder="Describe el sello educativo..." style={{ ...inputStyle, height: "100px", resize: "none" }} value={mision} onChange={(e) => setMision(e.target.value)} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Visión Institucional</label>
+                  <textarea placeholder="Describe la proyección a futuro..." style={{ ...inputStyle, height: "100px", resize: "none" }} value={vision} onChange={(e) => setVision(e.target.value)} />
+                </div>
               </div>
             </div>
           </div>
 
-          {/* Sección 2: Administradores */}
+          {/* 4. Matriz de Jefes de Especialidad */}
           <div style={{ backgroundColor: "white", borderRadius: "24px", padding: "30px", border: `1px solid ${COLORES.borde}`, boxShadow: "0 4px 10px rgba(0,0,0,0.02)" }}>
             <h2 style={{ fontSize: "16px", fontWeight: 700, color: COLORES.azul, margin: "0 0 10px 0", display: "flex", alignItems: "center", gap: "8px", textTransform: "uppercase" }}>
-              <Mail size={18} color={COLORES.naranja} /> 2. Administradores del Establecimiento
+              <Briefcase size={18} color={COLORES.naranja} /> 4. Matriz de Jefes de Especialidad (Nexo Estudiantil)
             </h2>
             <p style={{ fontSize: "13px", color: COLORES.grisClaro, margin: "0 0 20px 0" }}>
-              Escribe el correo y presiona obligatoriamente el botón <strong>+ Añadir</strong> para listarlo en la cola de registro.
+              Asigna el área técnica oficial del Mineduc para cada encargado de especialidad o mención del establecimiento.
             </p>
             
-            <div style={{ display: "flex", gap: "12px", marginBottom: "20px" }}>
-              <input 
-                type="email" 
-                placeholder="Ej: director@liceo.cl" 
-                style={inputStyle} 
-                value={correoInput} 
-                onChange={(e) => setCorreoInput(e.target.value)}
-              />
-              <button 
-                type="button" 
-                onClick={handleAgregarCorreo} 
-                style={{ backgroundColor: "#c2410c", color: "white", border: "none", padding: "0 24px", borderRadius: "10px", fontWeight: "700", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px" }}
-              >
-                <Plus size={16} /> Añadir
-              </button>
-            </div>
-
-            {/* Visualizador de correos en cola por registrar */}
-            <div style={{ background: "#f8fafc", borderRadius: "14px", padding: "20px", border: `1px solid ${COLORES.borde}` }}>
-              <span style={{ fontSize: "12px", fontWeight: "700", color: COLORES.grisClaro, display: "block", marginBottom: "12px" }}>
-                CORREOS EN COLA ({listaCorreos.length}):
-              </span>
+            <div style={{ background: "#f8fafc", padding: "20px", borderRadius: "16px", border: `1px solid ${COLORES.borde}`, display: "flex", flexDirection: "column", gap: "14px", marginBottom: "20px" }}>
               
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
-                {listaCorreos.length === 0 ? (
-                  <span style={{ fontSize: "13px", color: COLORES.grisClaro, fontStyle: "italic" }}>No has añadido correos todavía.</span>
-                ) : (
-                  listaCorreos.map((correo) => (
-                    <div key={correo} style={{ display: "flex", alignItems: "center", gap: "6px", backgroundColor: "white", padding: "6px 12px", borderRadius: "20px", border: `1px solid ${COLORES.borde}`, fontSize: "13px", color: COLORES.texto }}>
-                      {correo}
-                      <X size={14} color="#ef4444" style={{ cursor: "pointer" }} onClick={() => handleQuitarCorreo(correo)} />
-                    </div>
-                  ))
-                )}
+              <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1.25fr 1.25fr", gap: "12px" }}>
+                <div>
+                  <label style={labelStyle}>Nombres *</label>
+                  <input type="text" placeholder="Ej: Carlos Alberto" style={inputStyle} value={jefeNombre} onChange={(e) => setJefeNombre(e.target.value)} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Apellido Paterno *</label>
+                  <input type="text" placeholder="Ej: Retamales" style={inputStyle} value={jefeApPaterno} onChange={(e) => setJefeApPaterno(e.target.value)} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Apellido Materno *</label>
+                  <input type="text" placeholder="Ej: Vega" style={inputStyle} value={jefeApMaterno} onChange={(e) => setJefeApMaterno(e.target.value)} />
+                </div>
+              </div>
+              
+              <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "12px" }}>
+                <div>
+                  <label style={labelStyle}>Seleccione Especialidad / Mención Oficial *</label>
+                  <select 
+                    style={inputStyle} 
+                    value={jefeSelectorCompleto} 
+                    onChange={(e) => {
+                      const valor = e.target.value;
+                      setJefeSelectorCompleto(valor);
+                      
+                      if (!valor) {
+                        setJefeSector("");
+                        setJefeEspecialidad("");
+                        setJefeMencion("");
+                        return;
+                      }
+
+                      for (const sector in ESTRUCTURA_TP_CHILE) {
+                        for (const especialidad in ESTRUCTURA_TP_CHILE[sector]) {
+                          const menciones = ESTRUCTURA_TP_CHILE[sector][especialidad];
+                          
+                          if (menciones.length === 0 && valor === especialidad) {
+                            setJefeSector(sector);
+                            setJefeEspecialidad(especialidad);
+                            setJefeMencion("No requiere");
+                            return;
+                          }
+                          
+                          const mencioneEncontrada = menciones.find(m => `${especialidad} - ${m}` === valor);
+                          if (mencioneEncontrada) {
+                            setJefeSector(sector);
+                            setJefeEspecialidad(especialidad);
+                            setJefeMencion(mencioneEncontrada);
+                            return;
+                          }
+                        }
+                      }
+                    }}
+                  >
+                    <option value="">-- Selecciona Especialidad --</option>
+                    {Object.keys(ESTRUCTURA_TP_CHILE).map((sector) => (
+                      <optgroup key={sector} label={sector}>
+                        {Object.keys(ESTRUCTURA_TP_CHILE[sector]).map((especialidad) => {
+                          const menciones = ESTRUCTURA_TP_CHILE[sector][especialidad];
+                          if (menciones.length === 0) {
+                            return (
+                              <option key={especialidad} value={especialidad}>
+                                {especialidad}
+                              </option>
+                            );
+                          }
+                          return menciones.map((mencion) => (
+                            <option key={`${especialidad}-${mencion}`} value={`${especialidad} - ${mencion}`}>
+                              {especialidad} ({mencion})
+                            </option>
+                          ));
+                        })}
+                      </optgroup>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label style={labelStyle}>Correo Institucional Jefe *</label>
+                  <input type="email" placeholder="Ej: jefe.informatica@liceo.cl" style={inputStyle} value={jefeCorreo} onChange={(e) => setJefeCorreo(e.target.value)} />
+                </div>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "4px" }}>
+                <button type="button" onClick={handleAgregarJefe} style={{ display: "flex", alignItems: "center", gap: "6px", backgroundColor: COLORES.azul, color: "white", border: "none", padding: "10px 16px", borderRadius: "10px", fontSize: "13px", fontWeight: "700", cursor: "pointer" }}>
+                  <Plus size={16} /> Agregar Técnico a la Lista
+                </button>
               </div>
             </div>
+
+            <div style={{ overflowX: "auto", border: `1px solid ${COLORES.borde}`, borderRadius: "12px" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "13px" }}>
+                <thead>
+                  <tr style={{ backgroundColor: "#f8fafc", borderBottom: `1px solid ${COLORES.borde}`, color: COLORES.grisClaro }}>
+                    <th style={{ padding: "12px 16px" }}>Nombre Completo</th>
+                    <th style={{ padding: "12px 16px" }}>Especialidad / Mención</th>
+                    <th style={{ padding: "12px 16px" }}>Correo Electrónico</th>
+                    <th style={{ padding: "12px 16px", width: "60px" }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {listaJefes.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} style={{ padding: "20px", textAlign: "center", color: COLORES.grisClaro, fontStyle: "italic" }}>
+                        Ningún jefe de especialidad asociado todavía.
+                      </td>
+                    </tr>
+                  ) : (
+                    listaJefes.map((j) => (
+                      <tr key={j.correo} style={{ borderBottom: `1px solid ${COLORES.borde}`, color: COLORES.texto }}>
+                        <td style={{ padding: "12px 16px", fontWeight: "500" }}>{`${j.nombre} ${j.apPaterno} ${j.apMaterno}`}</td>
+                        <td style={{ padding: "12px 16px" }}>
+                          <span style={{ display: "block", fontWeight: "600", fontSize: "12px", color: COLORES.azul }}>{j.especialidad}</span>
+                          <span style={{ fontSize: "11px", color: COLORES.grisClaro }}>{j.mencion}</span>
+                        </td>
+                        <td style={{ padding: "12px 16px" }}>{j.correo}</td>
+                        <td style={{ padding: "12px 16px", textAlign: "center" }}>
+                          {j.correo !== correoPrincipal && (
+                            <button type="button" onClick={() => handleQuitarJefe(j.correo)} style={{ border: "none", background: "none", padding: 4, cursor: "pointer", color: "#ef4444" }}>
+                              <X size={16} />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
           </div>
 
-          {/* Botón de Envío */}
-          <button 
-            type="submit" 
-            disabled={saving} 
-            style={{ 
-              backgroundColor: COLORES.azul, color: "white", border: "none", padding: "18px", borderRadius: "14px", fontSize: "16px", fontWeight: 700, cursor: saving ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px"
-            }}
-          >
-            <ClipboardList size={20} />
-            {saving ? "Registrando Ecosistema..." : "Registrar Establecimiento e Invitar Equipo"}
-          </button>
+          {/* Botón de envío global */}
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "10px" }}>
+            <button
+              type="submit"
+              disabled={saving}
+              style={{
+                backgroundColor: COLORES.naranja,
+                color: "white",
+                border: "none",
+                padding: "14px 28px",
+                borderRadius: "14px",
+                fontSize: "15px",
+                fontWeight: "700",
+                cursor: saving ? "not-allowed" : "pointer",
+                boxShadow: "0 4px 12px rgba(249, 115, 22, 0.2)",
+                opacity: saving ? 0.7 : 1
+              }}
+            >
+              {saving ? "Guardando cambios institucionales..." : "Guardar Ecosistema Completo"}
+            </button>
+          </div>
 
         </form>
       </main>
@@ -268,5 +792,24 @@ export default function AdministrarColegios() {
   );
 }
 
-const labelStyle: React.CSSProperties = { fontSize: "13px", fontWeight: 700, color: COLORES.texto, display: "block", marginBottom: "6px" };
-const inputStyle: React.CSSProperties = { width: "100%", padding: "11px 14px", border: `1px solid ${COLORES.borde}`, borderRadius: "10px", fontSize: "14px", backgroundColor: "white", outline: "none", color: COLORES.texto, boxSizing: "border-box" };
+const labelStyle: React.CSSProperties = {
+  display: "block",
+  fontSize: "12px",
+  fontWeight: "700",
+  color: COLORES.texto,
+  marginBottom: "6px",
+  textTransform: "uppercase",
+  letterSpacing: "0.5px"
+};
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "12px 14px",
+  borderRadius: "10px",
+  border: `1px solid ${COLORES.borde}`,
+  fontSize: "14px",
+  color: COLORES.texto,
+  backgroundColor: "white",
+  outline: "none",
+  transition: "border-color 0.2s ease"
+};

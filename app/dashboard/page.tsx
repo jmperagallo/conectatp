@@ -4,7 +4,7 @@ import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
-// Importamos los 4 submódulos modulares (Estilo Includes de PHP)
+// Importamos los 4 submódulos modulares
 import DashboardSuperRoot from '../components/dashboards/DashboardSuperRoot';
 import DashboardCoordinador from '../components/dashboards/DashboardCoordinador';
 import DashboardJefeEspecialidad from '../components/dashboards/DashboardJefeEspecialidad';
@@ -22,6 +22,7 @@ export default function DashboardPage() {
   const router = useRouter();
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [role, setRole] = useState<string | null>(null);
+  const [idLiceo, setIdLiceo] = useState<string | null>(null); // 🔥 NUEVO: Para saber qué colegio le corresponde
   const [loading, setLoading] = useState(true);
   const [liceos, setLiceos] = useState<Liceo[]>([]);
 
@@ -81,15 +82,20 @@ export default function DashboardPage() {
 
       // Verificación de roles institucionales en la lista blanca
       try {
+        // 🔥 CORRECCIÓN: Traemos 'rol' y también 'id_liceo'
         const { data: perfil, error } = await supabase
           .from('lista_blanca')
-          .select('rol')
+          .select('rol, id_liceo')
           .eq('correo', emailLimpio)
           .maybeSingle();
 
         if (isMounted) {
-          // Si existe en lista blanca toma su rol ('coordinador' o 'jefe_especialidad'), si no, es estudiante
-          setRole(perfil && !error ? perfil.rol : 'estudiante');
+          if (perfil && !error) {
+            setRole(perfil.rol);
+            setIdLiceo(perfil.id_liceo); // Guardamos el ID del colegio asociado
+          } else {
+            setRole('estudiante');
+          }
           setLoading(false);
         }
       } catch (err) {
@@ -152,7 +158,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* ÁREA DE CONTENIDO PRINCIPAL DINÁMICO (Evaluación del Guardia de Tránsito) */}
+      {/* ÁREA DE CONTENIDO PRINCIPAL DINÁMICO */}
       <div style={{ marginLeft: '260px', padding: '40px', flex: 1, boxSizing: 'border-box' }}>
         
         {/* 1. VISTA SUPER ROOT / PLATAFORMA */}
@@ -164,9 +170,9 @@ export default function DashboardPage() {
           />
         )}
 
-        {/* 2. VISTA ADMINISTRADOR COLEGIAL (COORDINADOR) */}
-        {role === 'coordinador' && (
-          <DashboardCoordinador />
+        {/* 2. VISTA ADMINISTRADOR COLEGIAL (CORREGIDO AL ENUM REAL) */}
+        {role === 'administrador_liceo' && (
+          <DashboardCoordinador userEmail={userEmail} idLiceo={idLiceo} />
         )}
 
         {/* 3. VISTA JEFE DE ESPECIALIDAD */}
@@ -175,7 +181,7 @@ export default function DashboardPage() {
         )}
 
         {/* 4. VISTA ESTUDIANTES (O roles no clasificados) */}
-        {role !== 'super_root' && role !== 'coordinador' && role !== 'jefe_especialidad' && (
+        {role !== 'super_root' && role !== 'administrador_liceo' && role !== 'jefe_especialidad' && (
           <DashboardEstudiante role={role} />
         )}
         
