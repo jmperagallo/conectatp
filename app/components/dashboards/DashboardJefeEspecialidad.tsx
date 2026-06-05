@@ -80,7 +80,6 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
     cargarDatos();
   }, [userEmail, idLiceo, supabase]);
 
-  // Validación de RUT chileno
   const validarRut = (rut: string): boolean => {
     const clean = rut.replace(/[^0-9kK]/g, '').toUpperCase();
     if (clean.length < 2) return false;
@@ -97,7 +96,6 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
     return dvCalculado === dv;
   };
 
-  // Formatear RUT para mostrar con puntos y guión
   const formatearRut = (rut: string): string => {
     const clean = rut.replace(/[^0-9kK]/g, '').toUpperCase();
     if (clean.length < 2) return rut;
@@ -179,9 +177,7 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
     }
   };
 
-  // Descargar plantilla Excel con instrucciones
   const descargarPlantilla = () => {
-    // Hoja de datos (con ejemplos)
     const datosEjemplo = [
       ['Nombres', 'Apellido Paterno', 'Apellido Materno', 'RUT', 'Correo Electrónico', 'Teléfono'],
       ['Juan Carlos', 'Pérez', 'González', '12345678-5', 'juan.perez@ejemplo.cl', '+56 9 1234 5678'],
@@ -190,7 +186,6 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
     const wsDatos = XLSX.utils.aoa_to_sheet(datosEjemplo);
     wsDatos['!cols'] = [{wch:20},{wch:20},{wch:20},{wch:15},{wch:30},{wch:18}];
 
-    // Hoja de instrucciones
     const instrucciones = [
       ['INSTRUCCIONES PARA CARGAR ESTUDIANTES'],
       [''],
@@ -212,7 +207,6 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
     XLSX.writeFile(wb, `plantilla_estudiantes_${profesor?.especialidad || 'general'}.xlsx`);
   };
 
-  // Procesar archivo Excel subido
   const procesarExcel = async (file: File) => {
     return new Promise<{ estudiantes: any[]; errores: any[] }>((resolve) => {
       const reader = new FileReader();
@@ -324,7 +318,6 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
         <p style={{ color: '#94a3b8', fontSize: '12px' }}>Sesión: {userEmail}</p>
       </div>
 
-      {/* Tarjetas de estadísticas */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px', marginBottom: '32px' }}>
         <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
           <div style={{ fontSize: '32px', fontWeight: '800', color: '#1a365d' }}>{estudiantes.length}</div>
@@ -336,7 +329,6 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
         </div>
       </div>
 
-      {/* Botones de acción */}
       <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginBottom: '20px', flexWrap: 'wrap' }}>
         <button onClick={descargarPlantilla} style={{ backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <Download size={18} /> Descargar Plantilla Excel
@@ -351,7 +343,6 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
         </button>
       </div>
 
-      {/* Resultado de carga */}
       {resultadoCarga && (
         <div style={{ marginBottom: '20px', padding: '12px', borderRadius: '8px', backgroundColor: resultadoCarga.errors.length ? '#fee2e2' : '#d1fae5', color: resultadoCarga.errors.length ? '#991b1b' : '#065f46' }}>
           <strong>{resultadoCarga.ok} estudiantes cargados exitosamente.</strong>
@@ -366,7 +357,6 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
         </div>
       )}
 
-      {/* Tabla de estudiantes */}
       <div style={{ overflowX: 'auto', backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
@@ -381,9 +371,13 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
           </thead>
           <tbody>
             {estudiantes.length === 0 ? (
-              <tr><td colSpan={6} style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>No hay estudiantes registrados aún. Usa la carga masiva o agrega uno manualmente.</ol></td>
+              <tr>
+                <td colSpan={6} style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
+                  No hay estudiantes registrados aún. Usa la carga masiva o agrega uno manualmente.
+                </td>
+              </tr>
             ) : (
-              estudiantes.map(est => (
+              estudiantes.map((est) => (
                 <tr key={est.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
                   <td style={{ padding: '12px 16px' }}>{est.nombre} {est.apellido_paterno} {est.apellido_materno}</td>
                   <td style={{ padding: '12px 16px' }}>{formatearRut(est.rut)}</td>
@@ -393,15 +387,14 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
                   <td style={{ padding: '12px 16px' }}>
                     <button onClick={() => handleAbrirModal(est)} style={{ border: 'none', background: 'none', cursor: 'pointer', marginRight: '8px' }}><Edit size={18} color="#3b82f6" /></button>
                     <button onClick={() => handleEliminarEstudiante(est.id)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><Trash2 size={18} color="#ef4444" /></button>
-                   </td>
-                 </tr>
+                  </td>
+                </tr>
               ))
             )}
           </tbody>
         </table>
       </div>
 
-      {/* Modal para agregar/editar estudiante */}
       {modalAbierto && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div style={{ backgroundColor: 'white', borderRadius: '16px', padding: '24px', width: '500px', maxWidth: '90%' }}>
