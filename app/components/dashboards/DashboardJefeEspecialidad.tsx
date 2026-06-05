@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { Plus, Edit, Trash2, X, Upload, Download, CheckCircle, Loader2 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 
 interface Estudiante {
   id: string;
@@ -79,7 +80,7 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
     cargarDatos();
   }, [userEmail, idLiceo, supabase]);
 
-  // ✅ Validador de RUT chileno
+  // Validación de RUT chileno
   const validarRut = (rut: string): boolean => {
     const clean = rut.replace(/[^0-9kK]/g, '').toUpperCase();
     if (clean.length < 2) return false;
@@ -96,19 +97,18 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
     return dvCalculado === dv;
   };
 
-  // ✅ Validador de correo
-  const validarCorreo = (email: string): boolean => {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-  };
-
-  // ✅ Formateador de RUT (para mostrar bonito, opcional)
+  // Formatear RUT para mostrar con puntos y guión
   const formatearRut = (rut: string): string => {
-    let clean = rut.replace(/[^0-9kK]/g, '');
+    const clean = rut.replace(/[^0-9kK]/g, '').toUpperCase();
     if (clean.length < 2) return rut;
-    let dv = clean.slice(-1);
-    let cuerpo = clean.slice(0, -1);
-    cuerpo = cuerpo.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-    return cuerpo + '-' + dv.toUpperCase();
+    const cuerpo = clean.slice(0, -1);
+    const dv = clean.slice(-1);
+    let formateado = '';
+    for (let i = cuerpo.length; i > 0; i -= 3) {
+      if (formateado) formateado = '.' + formateado;
+      formateado = cuerpo.slice(Math.max(0, i - 3), i) + formateado;
+    }
+    return formateado + '-' + dv;
   };
 
   const handleAbrirModal = (estudiante?: Estudiante) => {
@@ -141,21 +141,17 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
   const handleGuardarEstudiante = async () => {
     if (!idLiceo) return;
     if (!validarRut(formData.rut)) {
-      alert('RUT inválido. Formato: 12345678-5 o 12.345.678-5');
-      return;
-    }
-    if (!validarCorreo(formData.correo)) {
-      alert('Correo electrónico inválido');
+      alert('RUT inválido. Ejemplo: 12345678-5');
       return;
     }
     const payload = {
       id_liceo: idLiceo,
-      nombre: formData.nombre.trim(),
-      apellido_paterno: formData.apellido_paterno.trim(),
-      apellido_materno: formData.apellido_materno.trim(),
+      nombre: formData.nombre,
+      apellido_paterno: formData.apellido_paterno,
+      apellido_materno: formData.apellido_materno,
       rut: formData.rut.replace(/[^0-9kK]/g, '').toUpperCase(),
-      correo: formData.correo.trim().toLowerCase(),
-      telefono: formData.telefono.trim(),
+      correo: formData.correo,
+      telefono: formData.telefono,
       especialidad: formData.especialidad,
       perfil_completo: false,
     };
@@ -183,91 +179,119 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
     }
   };
 
-  // 📥 Descargar plantilla CSV con instrucciones y ejemplo
+  // Descargar plantilla Excel con instrucciones
   const descargarPlantilla = () => {
-    const instrucciones = `# INSTRUCCIONES PARA LLENAR EL ARCHIVO CSV
-- Usa solo letras y espacios en nombres y apellidos.
-- RUT: solo números y guión (formato: 12345678-9 o 12.345.678-9). El sistema valida el dígito verificador.
-- Correo: debe ser válido (ejemplo@dominio.cl).
-- Teléfono: opcional, puedes dejarlo vacío. Formato sugerido: +56912345678 o 912345678.
+    // Hoja de datos (con ejemplos)
+    const datosEjemplo = [
+      ['Nombres', 'Apellido Paterno', 'Apellido Materno', 'RUT', 'Correo Electrónico', 'Teléfono'],
+      ['Juan Carlos', 'Pérez', 'González', '12345678-5', 'juan.perez@ejemplo.cl', '+56 9 1234 5678'],
+      ['María José', 'López', 'Fuentes', '11222333-4', 'maria.lopez@ejemplo.cl', '+56 9 8765 4321'],
+    ];
+    const wsDatos = XLSX.utils.aoa_to_sheet(datosEjemplo);
+    wsDatos['!cols'] = [{wch:20},{wch:20},{wch:20},{wch:15},{wch:30},{wch:18}];
 
-Ejemplo de fila válida:
-Juan,Pérez,González,12345678-5,juan.perez@escuela.cl,+56912345678
+    // Hoja de instrucciones
+    const instrucciones = [
+      ['INSTRUCCIONES PARA CARGAR ESTUDIANTES'],
+      [''],
+      ['1. No modifiques los encabezados de las columnas.'],
+      ['2. Cada fila después de los encabezados es un estudiante.'],
+      ['3. Formato del RUT: solo números y guión, ejemplo: 12345678-5 (puede terminar en K).'],
+      ['4. Correo electrónico: debe ser único y válido.'],
+      ['5. Teléfono: opcional, pero se recomienda formato +56 9 XXXX XXXX.'],
+      ['6. Los campos obligatorios son: Nombres, Apellido Paterno, RUT, Correo Electrónico.'],
+      ['7. Puedes eliminar las filas de ejemplo (Juan Pérez y María López).'],
+      ['8. Guarda el archivo y súbelo usando el botón "Carga Masiva (Excel)".'],
+    ];
+    const wsInstrucciones = XLSX.utils.aoa_to_sheet(instrucciones);
+    wsInstrucciones['!cols'] = [{wch:80}];
 
-`;
-    const encabezados = 'nombre,apellido_paterno,apellido_materno,rut,correo,telefono\n';
-    const ejemplo = 'Juan,Pérez,González,12345678-5,juan.perez@escuela.cl,+56912345678\n';
-    const contenido = instrucciones + encabezados + ejemplo;
-    const blob = new Blob([contenido], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'plantilla_estudiantes_con_instrucciones.csv';
-    a.click();
-    URL.revokeObjectURL(url);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, wsInstrucciones, 'Instrucciones');
+    XLSX.utils.book_append_sheet(wb, wsDatos, 'Estudiantes');
+    XLSX.writeFile(wb, `plantilla_estudiantes_${profesor?.especialidad || 'general'}.xlsx`);
   };
 
-  // 📤 Procesar archivo CSV
-  const procesarCSV = async (file: File) => {
+  // Procesar archivo Excel subido
+  const procesarExcel = async (file: File) => {
     return new Promise<{ estudiantes: any[]; errores: any[] }>((resolve) => {
       const reader = new FileReader();
       reader.onload = (e) => {
-        const text = e.target?.result as string;
-        const lines = text.split('\n').filter(l => l.trim() && !l.trim().startsWith('#'));
-        if (lines.length === 0) {
-          resolve({ estudiantes: [], errores: [{ fila: 0, error: 'Archivo vacío o solo comentarios' }] });
+        const data = new Uint8Array(e.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheet = workbook.Sheets['Estudiantes'];
+        if (!sheet) {
+          resolve({ estudiantes: [], errores: [{ fila: 0, error: 'No se encontró la hoja "Estudiantes". Asegúrate de no renombrarla.' }] });
           return;
         }
-        const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+        const rows = XLSX.utils.sheet_to_json<any>(sheet, { header: 1, defval: '' });
+        if (rows.length < 2) {
+          resolve({ estudiantes: [], errores: [{ fila: 0, error: 'El archivo no contiene datos.' }] });
+          return;
+        }
+        const headers = rows[0];
+        const expectedHeaders = ['Nombres', 'Apellido Paterno', 'Apellido Materno', 'RUT', 'Correo Electrónico', 'Teléfono'];
+        for (let i = 0; i < expectedHeaders.length; i++) {
+          if ((headers[i] || '').trim() !== expectedHeaders[i]) {
+            resolve({ estudiantes: [], errores: [{ fila: 0, error: `La columna ${i+1} debe ser "${expectedHeaders[i]}"` }] });
+            return;
+          }
+        }
         const estudiantes = [];
         const errores = [];
-        for (let i = 1; i < lines.length; i++) {
-          const valores = lines[i].split(',').map(v => v.trim());
-          const obj: any = {};
-          headers.forEach((h, idx) => { obj[h] = valores[idx] || ''; });
-          if (!obj.nombre || !obj.apellido_paterno || !obj.rut || !obj.correo) {
-            errores.push({ fila: i+1, error: 'Faltan campos obligatorios (nombre, apellido_paterno, rut, correo)' });
+        for (let i = 1; i < rows.length; i++) {
+          const row = rows[i];
+          if (!row || row.length === 0 || (row.length === 1 && !row[0])) continue;
+          const nombre = (row[0] || '').trim();
+          const apellidoPaterno = (row[1] || '').trim();
+          const apellidoMaterno = (row[2] || '').trim();
+          const rut = (row[3] || '').trim();
+          const correo = (row[4] || '').trim();
+          const telefono = (row[5] || '').trim();
+          
+          if (!nombre || !apellidoPaterno || !rut || !correo) {
+            errores.push({ fila: i+1, error: 'Faltan campos obligatorios (Nombres, Apellido Paterno, RUT, Correo)' });
             continue;
           }
-          if (!validarRut(obj.rut)) {
-            errores.push({ fila: i+1, error: `RUT inválido: ${obj.rut}` });
-            continue;
-          }
-          if (!validarCorreo(obj.correo)) {
-            errores.push({ fila: i+1, error: `Correo inválido: ${obj.correo}` });
+          if (!validarRut(rut)) {
+            errores.push({ fila: i+1, error: `RUT inválido: "${rut}". Ejemplo: 12345678-5` });
             continue;
           }
           estudiantes.push({
             id_liceo: idLiceo,
-            nombre: obj.nombre,
-            apellido_paterno: obj.apellido_paterno,
-            apellido_materno: obj.apellido_materno || '',
-            rut: obj.rut.replace(/[^0-9kK]/g, '').toUpperCase(),
-            correo: obj.correo.toLowerCase(),
-            telefono: obj.telefono || '',
+            nombre,
+            apellido_paterno: apellidoPaterno,
+            apellido_materno: apellidoMaterno,
+            rut: rut.replace(/[^0-9kK]/g, '').toUpperCase(),
+            correo: correo.toLowerCase(),
+            telefono: telefono,
             especialidad: profesor?.especialidad,
             perfil_completo: false,
           });
         }
         resolve({ estudiantes, errores });
       };
-      reader.readAsText(file);
+      reader.readAsArrayBuffer(file);
     });
   };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    if (!file.name.endsWith('.csv')) {
-      alert('Solo se permiten archivos CSV');
+    const extension = file.name.split('.').pop()?.toLowerCase();
+    if (extension !== 'xlsx' && extension !== 'xls') {
+      alert('Solo se permiten archivos Excel (.xlsx o .xls)');
       return;
     }
     setSubiendo(true);
     setResultadoCarga(null);
     try {
-      const { estudiantes: estudiantesData, errores } = await procesarCSV(file);
+      const { estudiantes: estudiantesData, errores } = await procesarExcel(file);
       if (estudiantesData.length === 0) {
         alert('No hay estudiantes válidos para cargar');
+        if (errores.length) {
+          setResultadoCarga({ ok: 0, errors: errores });
+        }
         return;
       }
       const { error: insertError } = await supabase
@@ -276,6 +300,7 @@ Juan,Pérez,González,12345678-5,juan.perez@escuela.cl,+56912345678
       if (insertError) throw new Error(insertError.message);
       setResultadoCarga({ ok: estudiantesData.length, errors: errores });
       await cargarEstudiantes();
+      if (errores.length === 0) alert(`✅ ${estudiantesData.length} estudiantes cargados exitosamente`);
     } catch (err: any) {
       alert(`Error al cargar: ${err.message}`);
     } finally {
@@ -311,29 +336,15 @@ Juan,Pérez,González,12345678-5,juan.perez@escuela.cl,+56912345678
         </div>
       </div>
 
-      {/* Caja de instrucciones */}
-      <div style={{ backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '12px', padding: '16px', marginBottom: '24px' }}>
-        <h4 style={{ margin: '0 0 8px 0', color: '#1e40af', fontSize: '14px' }}>📘 Cómo cargar estudiantes masivamente</h4>
-        <ul style={{ margin: 0, paddingLeft: '20px', color: '#1e3a8a', fontSize: '13px', lineHeight: '1.5' }}>
-          <li>Descarga la plantilla CSV usando el botón <strong>"Descargar Plantilla CSV"</strong>.</li>
-          <li>La plantilla incluye instrucciones y un ejemplo.</li>
-          <li><strong>Columnas obligatorias:</strong> nombre, apellido_paterno, rut, correo.</li>
-          <li><strong>RUT:</strong> solo números y guión (ej: 12345678-5). El sistema valida el dígito verificador.</li>
-          <li><strong>Correo:</strong> debe ser válido (ejemplo@dominio.cl).</li>
-          <li><strong>Teléfono:</strong> opcional (formato sugerido: +56912345678).</li>
-          <li>No modifiques los encabezados de la primera fila.</li>
-        </ul>
-      </div>
-
       {/* Botones de acción */}
       <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginBottom: '20px', flexWrap: 'wrap' }}>
         <button onClick={descargarPlantilla} style={{ backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Download size={18} /> Descargar Plantilla CSV
+          <Download size={18} /> Descargar Plantilla Excel
         </button>
-        <input type="file" ref={fileInputRef} accept=".csv" style={{ display: 'none' }} onChange={handleFileUpload} />
+        <input type="file" ref={fileInputRef} accept=".xlsx,.xls" style={{ display: 'none' }} onChange={handleFileUpload} />
         <button onClick={() => fileInputRef.current?.click()} disabled={subiendo} style={{ backgroundColor: '#10b981', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: subiendo ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
           {subiendo ? <Loader2 size={18} className="animate-spin" /> : <Upload size={18} />}
-          {subiendo ? 'Subiendo...' : 'Carga Masiva (CSV)'}
+          {subiendo ? 'Subiendo...' : 'Carga Masiva (Excel)'}
         </button>
         <button onClick={() => handleAbrirModal()} style={{ backgroundColor: '#1a365d', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <Plus size={18} /> Agregar Estudiante
@@ -363,25 +374,27 @@ Juan,Pérez,González,12345678-5,juan.perez@escuela.cl,+56912345678
               <th style={{ padding: '12px 16px', textAlign: 'left' }}>Nombre</th>
               <th style={{ padding: '12px 16px', textAlign: 'left' }}>RUT</th>
               <th style={{ padding: '12px 16px', textAlign: 'left' }}>Correo</th>
+              <th style={{ padding: '12px 16px', textAlign: 'left' }}>Teléfono</th>
               <th style={{ padding: '12px 16px', textAlign: 'left' }}>Estado</th>
               <th style={{ padding: '12px 16px', width: '100px' }}>Acciones</th>
             </tr>
           </thead>
           <tbody>
             {estudiantes.length === 0 ? (
-              <tr><td colSpan={5} style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>No hay estudiantes registrados aún. Usa la carga masiva o agrega uno manualmente.</td></tr>
+              <tr><td colSpan={6} style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>No hay estudiantes registrados aún. Usa la carga masiva o agrega uno manualmente.</ol></td>
             ) : (
               estudiantes.map(est => (
                 <tr key={est.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
                   <td style={{ padding: '12px 16px' }}>{est.nombre} {est.apellido_paterno} {est.apellido_materno}</td>
-                  <td style={{ padding: '12px 16px' }}>{est.rut}</td>
+                  <td style={{ padding: '12px 16px' }}>{formatearRut(est.rut)}</td>
                   <td style={{ padding: '12px 16px' }}>{est.correo}</td>
+                  <td style={{ padding: '12px 16px' }}>{est.telefono || '-'}</td>
                   <td style={{ padding: '12px 16px' }}>{est.perfil_completo ? <CheckCircle size={18} color="#16a34a" /> : 'Pendiente'}</td>
                   <td style={{ padding: '12px 16px' }}>
                     <button onClick={() => handleAbrirModal(est)} style={{ border: 'none', background: 'none', cursor: 'pointer', marginRight: '8px' }}><Edit size={18} color="#3b82f6" /></button>
                     <button onClick={() => handleEliminarEstudiante(est.id)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><Trash2 size={18} color="#ef4444" /></button>
-                  </td>
-                </tr>
+                   </td>
+                 </tr>
               ))
             )}
           </tbody>
@@ -401,7 +414,7 @@ Juan,Pérez,González,12345678-5,juan.perez@escuela.cl,+56912345678
               <input type="text" placeholder="Apellido Paterno *" value={formData.apellido_paterno} onChange={e => setFormData({...formData, apellido_paterno: e.target.value})} style={{ padding: '10px', border: '1px solid #ccc', borderRadius: '8px' }} />
               <input type="text" placeholder="Apellido Materno" value={formData.apellido_materno} onChange={e => setFormData({...formData, apellido_materno: e.target.value})} style={{ padding: '10px', border: '1px solid #ccc', borderRadius: '8px' }} />
               <input type="text" placeholder="RUT * (ej: 12345678-5)" value={formData.rut} onChange={e => setFormData({...formData, rut: e.target.value})} style={{ padding: '10px', border: '1px solid #ccc', borderRadius: '8px' }} />
-              <input type="email" placeholder="Correo *" value={formData.correo} onChange={e => setFormData({...formData, correo: e.target.value})} style={{ padding: '10px', border: '1px solid #ccc', borderRadius: '8px' }} />
+              <input type="email" placeholder="Correo Electrónico *" value={formData.correo} onChange={e => setFormData({...formData, correo: e.target.value})} style={{ padding: '10px', border: '1px solid #ccc', borderRadius: '8px' }} />
               <input type="text" placeholder="Teléfono (opcional)" value={formData.telefono} onChange={e => setFormData({...formData, telefono: e.target.value})} style={{ padding: '10px', border: '1px solid #ccc', borderRadius: '8px' }} />
               <input type="text" placeholder="Especialidad" value={formData.especialidad} disabled style={{ padding: '10px', border: '1px solid #ccc', borderRadius: '8px', backgroundColor: '#f3f4f6' }} />
               <button onClick={handleGuardarEstudiante} style={{ backgroundColor: '#f97316', color: 'white', border: 'none', padding: '12px', borderRadius: '8px', cursor: 'pointer', marginTop: '12px' }}>
