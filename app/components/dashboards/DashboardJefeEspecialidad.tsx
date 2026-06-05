@@ -23,7 +23,7 @@ interface Props {
 }
 
 export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props) {
-  const [profesor, setProfesor] = useState<{ nombre: string; apellido_paterno: string; especialidad: string } | null>(null);
+  const [profesor, setProfesor] = useState<{ nombre: string; apellido_paterno: string; especialidad: string; institucion?: string } | null>(null);
   const [estudiantes, setEstudiantes] = useState<Estudiante[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalAbierto, setModalAbierto] = useState(false);
@@ -46,6 +46,19 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
+  // Obtener nombre de la institución
+  const cargarInstitucion = async () => {
+    if (!idLiceo) return;
+    const { data, error } = await supabase
+      .from('liceos')
+      .select('nombre')
+      .eq('id', idLiceo)
+      .single();
+    if (!error && data) {
+      setProfesor(prev => ({ ...prev!, institucion: data.nombre }));
+    }
+  };
+
   const cargarEstudiantes = async () => {
     if (!idLiceo || !profesor?.especialidad) return;
     const { data, error } = await supabase
@@ -60,13 +73,18 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
     if (!userEmail || !idLiceo) return;
     const cargarDatos = async () => {
       setLoading(true);
+      // Obtener datos del profesor
       const { data: profe, error: errProfe } = await supabase
         .from('lista_blanca')
         .select('nombre, apellido_paterno, especialidad')
         .eq('correo', userEmail)
         .single();
       if (errProfe) console.error(errProfe);
-      else setProfesor(profe);
+      else setProfesor({ ...profe, institucion: '' });
+      
+      // Cargar nombre de la institución
+      await cargarInstitucion();
+      
       if (profe?.especialidad) {
         const { data: estudiantesData } = await supabase
           .from('estudiantes')
@@ -80,6 +98,7 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
     cargarDatos();
   }, [userEmail, idLiceo, supabase]);
 
+  // Validación de RUT
   const validarRut = (rut: string): boolean => {
     const clean = rut.replace(/[^0-9kK]/g, '').toUpperCase();
     if (clean.length < 2) return false;
@@ -107,6 +126,34 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
       formateado = cuerpo.slice(Math.max(0, i - 3), i) + formateado;
     }
     return formateado + '-' + dv;
+  };
+
+  // Función para enviar correo de invitación a un estudiante
+  const enviarInvitacion = async (estudiante: { nombre: string; apellido_paterno: string; correo: string; especialidad: string }) => {
+    const passwordTemporal = `CNX-${Math.floor(1000 + Math.random() * 9000)}-TP`;
+    try {
+      const res = await fetch("/api/enviar-invitacion-estudiante", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          correo: estudiante.correo,
+          nombre: estudiante.nombre,
+          apellido: estudiante.apellido_paterno,
+          institucion: profesor?.institucion || "Institución",
+          especialidad: estudiante.especialidad,
+          passwordTemporal
+        })
+      });
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Error al enviar correo");
+      }
+      console.log(`✅ Invitación enviada a ${estudiante.correo}`);
+      return true;
+    } catch (err) {
+      console.error(`❌ Error enviando correo a ${estudiante.correo}:`, err);
+      return false;
+    }
   };
 
   const handleAbrirModal = (estudiante?: Estudiante) => {
@@ -154,16 +201,29 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
       perfil_completo: false,
     };
     let error;
+    let nuevoId = null;
     if (editando) {
       const { error: err } = await supabase.from('estudiantes').update(payload).eq('id', editando.id);
       error = err;
     } else {
-      const { error: err } = await supabase.from('estudiantes').insert(payload);
+      const { data, error: err } = await supabase.from('estudiantes').insert(payload).select();
       error = err;
+      if (data && data[0]) nuevoId = data[0].id;
     }
-    if (error) alert(`Error: ${error.message}`);
-    else {
+    if (error) {
+      alert(`Error: ${error.message}`);
+    } else {
       alert(editando ? 'Estudiante actualizado' : 'Estudiante agregado');
+      // Enviar correo solo si es nuevo
+      if (!editando) {
+        const enviado = await enviarInvitacion({
+          nombre: formData.nombre,
+          apellido_paterno: formData.apellido_paterno,
+          correo: formData.correo,
+          especialidad: formData.especialidad
+        });
+        if (!enviado) alert("Estudiante guardado, pero hubo un error al enviar el correo. Reintentará más tarde.");
+      }
       setModalAbierto(false);
       cargarEstudiantes();
     }
@@ -177,6 +237,7 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
     }
   };
 
+  // Descargar plantilla Excel (sin cambios)
   const descargarPlantilla = () => {
     const datosEjemplo = [
       ['Nombres', 'Apellido Paterno', 'Apellido Materno', 'RUT', 'Correo Electrónico', 'Teléfono'],
@@ -207,6 +268,7 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
     XLSX.writeFile(wb, `plantilla_estudiantes_${profesor?.especialidad || 'general'}.xlsx`);
   };
 
+  // Procesar Excel (con envío de correos)
   const procesarExcel = async (file: File) => {
     return new Promise<{ estudiantes: any[]; errores: any[] }>((resolve) => {
       const reader = new FileReader();
@@ -283,18 +345,29 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
       const { estudiantes: estudiantesData, errores } = await procesarExcel(file);
       if (estudiantesData.length === 0) {
         alert('No hay estudiantes válidos para cargar');
-        if (errores.length) {
-          setResultadoCarga({ ok: 0, errors: errores });
-        }
+        if (errores.length) setResultadoCarga({ ok: 0, errors: errores });
         return;
       }
-      const { error: insertError } = await supabase
+      const { error: insertError, data: inserted } = await supabase
         .from('estudiantes')
-        .upsert(estudiantesData, { onConflict: 'rut' });
+        .upsert(estudiantesData, { onConflict: 'rut', returning: 'representation' });
       if (insertError) throw new Error(insertError.message);
+      
+      // Enviar correos a los estudiantes insertados (excluyendo duplicados)
+      const enviados = [];
+      for (const est of estudiantesData) {
+        const enviado = await enviarInvitacion({
+          nombre: est.nombre,
+          apellido_paterno: est.apellido_paterno,
+          correo: est.correo,
+          especialidad: est.especialidad
+        });
+        if (enviado) enviados.push(est.correo);
+        await new Promise(r => setTimeout(r, 500)); // evitar sobrecarga del SMTP
+      }
       setResultadoCarga({ ok: estudiantesData.length, errors: errores });
       await cargarEstudiantes();
-      if (errores.length === 0) alert(`✅ ${estudiantesData.length} estudiantes cargados exitosamente`);
+      alert(`✅ ${estudiantesData.length} estudiantes cargados. Correos enviados a ${enviados.length} de ellos.`);
     } catch (err: any) {
       alert(`Error al cargar: ${err.message}`);
     } finally {
@@ -318,6 +391,7 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
         <p style={{ color: '#94a3b8', fontSize: '12px' }}>Sesión: {userEmail}</p>
       </div>
 
+      {/* Tarjetas de estadísticas (igual) */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px', marginBottom: '32px' }}>
         <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
           <div style={{ fontSize: '32px', fontWeight: '800', color: '#1a365d' }}>{estudiantes.length}</div>
@@ -329,6 +403,7 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
         </div>
       </div>
 
+      {/* Botones (igual) */}
       <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginBottom: '20px', flexWrap: 'wrap' }}>
         <button onClick={descargarPlantilla} style={{ backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <Download size={18} /> Descargar Plantilla Excel
@@ -343,6 +418,7 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
         </button>
       </div>
 
+      {/* Resultado de carga */}
       {resultadoCarga && (
         <div style={{ marginBottom: '20px', padding: '12px', borderRadius: '8px', backgroundColor: resultadoCarga.errors.length ? '#fee2e2' : '#d1fae5', color: resultadoCarga.errors.length ? '#991b1b' : '#065f46' }}>
           <strong>{resultadoCarga.ok} estudiantes cargados exitosamente.</strong>
@@ -357,6 +433,7 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
         </div>
       )}
 
+      {/* Tabla (igual) */}
       <div style={{ overflowX: 'auto', backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
@@ -372,9 +449,7 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
           <tbody>
             {estudiantes.length === 0 ? (
               <tr>
-                <td colSpan={6} style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
-                  No hay estudiantes registrados aún. Usa la carga masiva o agrega uno manualmente.
-                </td>
+                <td colSpan={6} style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>No hay estudiantes registrados aún. Usa la carga masiva o agrega uno manualmente.</td>
               </tr>
             ) : (
               estudiantes.map((est) => (
@@ -395,6 +470,7 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
         </table>
       </div>
 
+      {/* Modal (igual) */}
       {modalAbierto && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div style={{ backgroundColor: 'white', borderRadius: '16px', padding: '24px', width: '500px', maxWidth: '90%' }}>
