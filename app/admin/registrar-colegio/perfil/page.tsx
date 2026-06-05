@@ -102,7 +102,7 @@ export default function AdministrarColegios() {
   const [liceoId, setLiceoId] = useState<string | null>(null);
   const [rolUsuario, setRolUsuario] = useState<string | null>(null);
 
-  // Depuración visual (opcional, si quieres mantener el panel)
+  // Depuración visual
   const [debugMessages, setDebugMessages] = useState<string[]>([]);
   const addDebug = (msg: string) => {
     console.log(msg);
@@ -150,12 +150,11 @@ export default function AdministrarColegios() {
   const [jefeCorreo, setJefeCorreo] = useState("");
   const [listaJefes, setListaJefes] = useState<JefeEspecialidad[]>([]);
 
-  // Subida a R2 (con eliminación automática del logo anterior)
+  // Subida a R2 con eliminación automática del logo anterior
   const { uploadFile: uploadLogo, uploading: uploadingLogo } = useR2Upload({
     folder: "logos",
     maxSizeMB: 2,
     onSuccess: async (url) => {
-      // Si hay un logo anterior y es diferente al nuevo, lo eliminamos de R2
       if (logoUrl && logoUrl !== url) {
         try {
           const oldKey = logoUrl.replace(process.env.NEXT_PUBLIC_R2_PUBLIC_URL + "/", "");
@@ -185,7 +184,7 @@ export default function AdministrarColegios() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  // Funciones auxiliares (formatRut, telefonos)
+  // Funciones auxiliares
   const formatRut = (value: string) => {
     let actual = value.replace(/[^0-9kK]/g, "").toUpperCase();
     if (actual.length <= 1) return actual;
@@ -227,12 +226,10 @@ export default function AdministrarColegios() {
     reader.onloadend = () => setPreviewLogo(reader.result as string);
     reader.readAsDataURL(file);
     const url = await uploadLogo(file);
-    if (url) {
-      setArchivoLogo(file);
-    }
+    if (url) setArchivoLogo(file);
   };
 
-  // Cargar datos iniciales (igual que antes, con logs opcionales)
+  // Cargar datos iniciales
   useEffect(() => {
     async function detectarYBuscarLiceo() {
       try {
@@ -303,7 +300,7 @@ export default function AdministrarColegios() {
     detectarYBuscarLiceo();
   }, [supabase]);
 
-  // Manejo de jefes (igual)
+  // Manejo de jefes
   const handleAgregarJefe = (e: React.FormEvent) => {
     e.preventDefault();
     const mail = jefeCorreo.trim().toLowerCase();
@@ -340,7 +337,7 @@ export default function AdministrarColegios() {
     setListaJefes(listaJefes.filter(j => j.correo !== correoAQuitar));
   };
 
-  // Guardar todo (con la lógica de actualización por ID/RBD y actualización de perfil_completo)
+  // Guardar todo (con envío de correos a jefes nuevos)
   const handleRegistrarEcosistema = async (e: React.FormEvent) => {
     e.preventDefault();
     addDebug("🚀 Guardando ecosistema...");
@@ -395,7 +392,7 @@ export default function AdministrarColegios() {
       }
       if (!actualizado) throw new Error(`No se encontró establecimiento con ID ${liceoId} ni RBD ${rbd}`);
 
-      // Actualizar perfil_completo si el usuario es jefe (rol 'profesor')
+      // Actualizar perfil_completo si el usuario es jefe
       if (rolUsuario === 'profesor' && liceoId) {
         await supabase
           .from("lista_blanca")
@@ -404,6 +401,7 @@ export default function AdministrarColegios() {
         addDebug("✅ Perfil de jefe marcado como completo");
       }
 
+      // Guardar jefes (upsert)
       const jefesAGuardar = listaJefes.filter(j => j.correo !== correoPrincipal);
       if (jefesAGuardar.length > 0) {
         const { error } = await supabase
@@ -417,10 +415,49 @@ export default function AdministrarColegios() {
             especialidad: j.especialidad,
             mencion: j.mencion,
             rol: "profesor",
-            id_liceo: liceoId
+            id_liceo: liceoId,
+            invitacion_enviada: false
           })), { onConflict: 'correo' });
         if (error) throw new Error(`Error guardando jefes: ${error.message}`);
-        addDebug(`✅ ${jefesAGuardar.length} jefes guardados`);
+        addDebug(`✅ ${jefesAGuardar.length} jefes guardados (invitación pendiente)`);
+      }
+
+      // Envío de correos a jefes pendientes
+      const { data: jefesPendientes, error: errPendientes } = await supabase
+        .from("lista_blanca")
+        .select("correo, nombre, apellido_paterno, especialidad")
+        .eq("id_liceo", liceoId)
+        .eq("rol", "profesor")
+        .eq("invitacion_enviada", false);
+      if (!errPendientes && jefesPendientes && jefesPendientes.length > 0) {
+        addDebug(`📧 Preparando envío de ${jefesPendientes.length} invitaciones...`);
+        for (const jefe of jefesPendientes) {
+          const tempPass = `CNX-${Math.floor(1000 + Math.random() * 9000)}-TP`;
+          try {
+            await fetch("/api/enviar-invitacion-jefe", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                correo: jefe.correo,
+                nombre: jefe.nombre,
+                apellido: jefe.apellido_paterno,
+                institucion: nombre,
+                especialidad: jefe.especialidad,
+                passwordTemporal: tempPass
+              })
+            });
+            await supabase
+              .from("lista_blanca")
+              .update({ invitacion_enviada: true })
+              .eq("correo", jefe.correo);
+            addDebug(`📧 Invitación enviada a ${jefe.correo}`);
+            await new Promise(resolve => setTimeout(resolve, 500));
+          } catch (err) {
+            addDebug(`❌ Error enviando a ${jefe.correo}: ${err}`);
+          }
+        }
+      } else {
+        addDebug("ℹ️ No hay jefes pendientes de invitación.");
       }
 
       addDebug("🎉 Todo guardado exitosamente");
@@ -434,7 +471,6 @@ export default function AdministrarColegios() {
     }
   };
 
-  // Limpiar debug (opcional)
   const clearDebug = () => setDebugMessages([]);
 
   if (loadingSesion) {
@@ -446,7 +482,7 @@ export default function AdministrarColegios() {
       <Header />
       <main style={{ flex: 1, display: "flex", justifyContent: "center", padding: "40px 24px" }}>
         <div style={{ width: "100%", maxWidth: "850px", display: "flex", flexDirection: "column", gap: "24px" }}>
-          {/* Panel de depuración (opcional) */}
+          {/* Panel de depuración */}
           <div style={{ backgroundColor: "#1e1e2f", color: "#fff", borderRadius: "12px", padding: "12px", fontSize: "12px", fontFamily: "monospace", maxHeight: "200px", overflowY: "auto" }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
               <strong>🐞 DEPURACIÓN EN VIVO</strong>
