@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
-import { User, GraduationCap, CheckCircle, Plus, Edit, Trash2, X } from 'lucide-react';
+import { Plus, Edit, Trash2, X, Upload, Download, CheckCircle, Loader2, AlertCircle } from 'lucide-react';
 
 interface Estudiante {
   id: string;
@@ -27,6 +27,9 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
   const [loading, setLoading] = useState(true);
   const [modalAbierto, setModalAbierto] = useState(false);
   const [editando, setEditando] = useState<Estudiante | null>(null);
+  const [subiendo, setSubiendo] = useState(false);
+  const [resultadoCarga, setResultadoCarga] = useState<{ ok: number; errors: any[] } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [formData, setFormData] = useState({
     nombre: '',
     apellido_paterno: '',
@@ -42,13 +45,20 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  // Cargar datos del profesor y sus estudiantes
+  const cargarEstudiantes = async () => {
+    if (!idLiceo || !profesor?.especialidad) return;
+    const { data, error } = await supabase
+      .from('estudiantes')
+      .select('*')
+      .eq('id_liceo', idLiceo)
+      .eq('especialidad', profesor.especialidad);
+    if (!error && data) setEstudiantes(data);
+  };
+
   useEffect(() => {
     if (!userEmail || !idLiceo) return;
-
     const cargarDatos = async () => {
       setLoading(true);
-      // 1. Obtener datos del profesor (de lista_blanca)
       const { data: profe, error: errProfe } = await supabase
         .from('lista_blanca')
         .select('nombre, apellido_paterno, especialidad')
@@ -56,20 +66,35 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
         .single();
       if (errProfe) console.error(errProfe);
       else setProfesor(profe);
-
-      // 2. Obtener estudiantes del liceo (filtrados por especialidad del profesor)
-      const { data: estudiantesData, error: errEst } = await supabase
-        .from('estudiantes')
-        .select('*')
-        .eq('id_liceo', idLiceo)
-        .eq('especialidad', profe?.especialidad || '');
-      if (errEst) console.error(errEst);
-      else setEstudiantes(estudiantesData || []);
-
+      if (profe?.especialidad) {
+        const { data: estudiantesData } = await supabase
+          .from('estudiantes')
+          .select('*')
+          .eq('id_liceo', idLiceo)
+          .eq('especialidad', profe.especialidad);
+        if (estudiantesData) setEstudiantes(estudiantesData);
+      }
       setLoading(false);
     };
     cargarDatos();
   }, [userEmail, idLiceo, supabase]);
+
+  // Validación de RUT chileno
+  const validarRut = (rut: string): boolean => {
+    const clean = rut.replace(/[^0-9kK]/g, '').toUpperCase();
+    if (clean.length < 2) return false;
+    const cuerpo = clean.slice(0, -1);
+    const dv = clean.slice(-1);
+    let suma = 0;
+    let multiplo = 2;
+    for (let i = cuerpo.length - 1; i >= 0; i--) {
+      suma += parseInt(cuerpo[i]) * multiplo;
+      multiplo = multiplo === 7 ? 2 : multiplo + 1;
+    }
+    const dvEsperado = 11 - (suma % 11);
+    const dvCalculado = dvEsperado === 11 ? '0' : dvEsperado === 10 ? 'K' : dvEsperado.toString();
+    return dvCalculado === dv;
+  };
 
   const handleAbrirModal = (estudiante?: Estudiante) => {
     if (estudiante) {
@@ -100,6 +125,10 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
 
   const handleGuardarEstudiante = async () => {
     if (!idLiceo) return;
+    if (!validarRut(formData.rut)) {
+      alert('RUT inválido');
+      return;
+    }
     const payload = {
       id_liceo: idLiceo,
       nombre: formData.nombre,
@@ -111,43 +140,109 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
       especialidad: formData.especialidad,
       perfil_completo: false,
     };
-
     let error;
     if (editando) {
-      // Actualizar
-      const { error: err } = await supabase
-        .from('estudiantes')
-        .update(payload)
-        .eq('id', editando.id);
+      const { error: err } = await supabase.from('estudiantes').update(payload).eq('id', editando.id);
       error = err;
     } else {
-      // Insertar
       const { error: err } = await supabase.from('estudiantes').insert(payload);
       error = err;
     }
-
-    if (error) {
-      alert(`Error: ${error.message}`);
-    } else {
+    if (error) alert(`Error: ${error.message}`);
+    else {
       alert(editando ? 'Estudiante actualizado' : 'Estudiante agregado');
       setModalAbierto(false);
-      // Recargar lista
-      const { data } = await supabase
-        .from('estudiantes')
-        .select('*')
-        .eq('id_liceo', idLiceo)
-        .eq('especialidad', profesor?.especialidad || '');
-      setEstudiantes(data || []);
+      cargarEstudiantes();
     }
   };
 
   const handleEliminarEstudiante = async (id: string) => {
-    if (confirm('¿Eliminar este estudiante?')) {
+    if (confirm('¿Eliminar estudiante?')) {
       const { error } = await supabase.from('estudiantes').delete().eq('id', id);
       if (error) alert(`Error: ${error.message}`);
-      else {
-        setEstudiantes(estudiantes.filter(e => e.id !== id));
+      else setEstudiantes(estudiantes.filter(e => e.id !== id));
+    }
+  };
+
+  // Descargar plantilla CSV
+  const descargarPlantilla = () => {
+    const columnas = ['nombre', 'apellido_paterno', 'apellido_materno', 'rut', 'correo', 'telefono'];
+    const contenido = columnas.join(',') + '\n';
+    const blob = new Blob([contenido], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'plantilla_estudiantes.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Procesar archivo CSV
+  const procesarCSV = async (file: File) => {
+    return new Promise<{ estudiantes: any[]; errores: any[] }>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const text = e.target?.result as string;
+        const lines = text.split('\n').filter(l => l.trim());
+        const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+        const estudiantes = [];
+        const errores = [];
+        for (let i = 1; i < lines.length; i++) {
+          const valores = lines[i].split(',').map(v => v.trim());
+          const obj: any = {};
+          headers.forEach((h, idx) => { obj[h] = valores[idx] || ''; });
+          if (!obj.nombre || !obj.apellido_paterno || !obj.rut || !obj.correo) {
+            errores.push({ fila: i+1, error: 'Faltan campos obligatorios' });
+            continue;
+          }
+          if (!validarRut(obj.rut)) {
+            errores.push({ fila: i+1, error: 'RUT inválido' });
+            continue;
+          }
+          estudiantes.push({
+            id_liceo: idLiceo,
+            nombre: obj.nombre,
+            apellido_paterno: obj.apellido_paterno,
+            apellido_materno: obj.apellido_materno,
+            rut: obj.rut,
+            correo: obj.correo,
+            telefono: obj.telefono || '',
+            especialidad: profesor?.especialidad,
+            perfil_completo: false,
+          });
+        }
+        resolve({ estudiantes, errores });
+      };
+      reader.readAsText(file);
+    });
+  };
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.name.endsWith('.csv')) {
+      alert('Solo se permiten archivos CSV');
+      return;
+    }
+    setSubiendo(true);
+    setResultadoCarga(null);
+    try {
+      const { estudiantes: estudiantesData, errores } = await procesarCSV(file);
+      if (estudiantesData.length === 0) {
+        alert('No hay estudiantes válidos para cargar');
+        return;
       }
+      const { error: insertError } = await supabase
+        .from('estudiantes')
+        .upsert(estudiantesData, { onConflict: 'rut' });
+      if (insertError) throw new Error(insertError.message);
+      setResultadoCarga({ ok: estudiantesData.length, errors: errores });
+      await cargarEstudiantes();
+    } catch (err: any) {
+      alert(`Error al cargar: ${err.message}`);
+    } finally {
+      setSubiendo(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
@@ -159,7 +254,9 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
     <div>
       <div style={{ marginBottom: '36px' }}>
         <span style={{ fontSize: '12px', fontWeight: '700', color: '#f97316', textTransform: 'uppercase' }}>Panel del Jefe de Especialidad</span>
-        <h1 style={{ color: '#1a365d', fontSize: '28px', fontWeight: '800', margin: 0 }}>Bienvenido, {profesor?.nombre} {profesor?.apellido_paterno}</h1>
+        <h1 style={{ color: '#1a365d', fontSize: '28px', fontWeight: '800', margin: 0 }}>
+          Bienvenido, {profesor?.nombre} {profesor?.apellido_paterno}
+        </h1>
         <p style={{ color: '#64748b' }}>Especialidad: <strong>{profesor?.especialidad}</strong></p>
         <p style={{ color: '#94a3b8', fontSize: '12px' }}>Sesión: {userEmail}</p>
       </div>
@@ -176,12 +273,35 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
         </div>
       </div>
 
-      {/* Botón agregar estudiante */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '20px' }}>
+      {/* Botones de acción */}
+      <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginBottom: '20px', flexWrap: 'wrap' }}>
+        <button onClick={descargarPlantilla} style={{ backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Download size={18} /> Descargar Plantilla CSV
+        </button>
+        <input type="file" ref={fileInputRef} accept=".csv" style={{ display: 'none' }} onChange={handleFileUpload} />
+        <button onClick={() => fileInputRef.current?.click()} disabled={subiendo} style={{ backgroundColor: '#10b981', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: subiendo ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {subiendo ? <Loader2 size={18} className="animate-spin" /> : <Upload size={18} />}
+          {subiendo ? 'Subiendo...' : 'Carga Masiva (CSV)'}
+        </button>
         <button onClick={() => handleAbrirModal()} style={{ backgroundColor: '#1a365d', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <Plus size={18} /> Agregar Estudiante
         </button>
       </div>
+
+      {/* Resultado de carga */}
+      {resultadoCarga && (
+        <div style={{ marginBottom: '20px', padding: '12px', borderRadius: '8px', backgroundColor: resultadoCarga.errors.length ? '#fee2e2' : '#d1fae5', color: resultadoCarga.errors.length ? '#991b1b' : '#065f46' }}>
+          <strong>{resultadoCarga.ok} estudiantes cargados exitosamente.</strong>
+          {resultadoCarga.errors.length > 0 && (
+            <details style={{ marginTop: '8px' }}>
+              <summary>{resultadoCarga.errors.length} errores encontrados</summary>
+              <ul style={{ marginTop: '8px', fontSize: '12px' }}>
+                {resultadoCarga.errors.map((err, idx) => <li key={idx}>Fila {err.fila}: {err.error}</li>)}
+              </ul>
+            </details>
+          )}
+        </div>
+      )}
 
       {/* Tabla de estudiantes */}
       <div style={{ overflowX: 'auto', backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
@@ -197,7 +317,7 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
           </thead>
           <tbody>
             {estudiantes.length === 0 ? (
-              <tr><td colSpan={5} style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>No hay estudiantes registrados aún.</td></tr>
+              <tr><td colSpan={5} style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>No hay estudiantes registrados aún. Usa la carga masiva o agrega uno manualmente.</td></tr>
             ) : (
               estudiantes.map(est => (
                 <tr key={est.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
@@ -231,7 +351,7 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
               <input type="text" placeholder="RUT" value={formData.rut} onChange={e => setFormData({...formData, rut: e.target.value})} style={{ padding: '10px', border: '1px solid #ccc', borderRadius: '8px' }} />
               <input type="email" placeholder="Correo" value={formData.correo} onChange={e => setFormData({...formData, correo: e.target.value})} style={{ padding: '10px', border: '1px solid #ccc', borderRadius: '8px' }} />
               <input type="text" placeholder="Teléfono" value={formData.telefono} onChange={e => setFormData({...formData, telefono: e.target.value})} style={{ padding: '10px', border: '1px solid #ccc', borderRadius: '8px' }} />
-              <input type="text" placeholder="Especialidad" value={formData.especialidad} onChange={e => setFormData({...formData, especialidad: e.target.value})} style={{ padding: '10px', border: '1px solid #ccc', borderRadius: '8px', backgroundColor: '#f3f4f6' }} disabled={!!editando} />
+              <input type="text" placeholder="Especialidad" value={formData.especialidad} disabled style={{ padding: '10px', border: '1px solid #ccc', borderRadius: '8px', backgroundColor: '#f3f4f6' }} />
               <button onClick={handleGuardarEstudiante} style={{ backgroundColor: '#f97316', color: 'white', border: 'none', padding: '12px', borderRadius: '8px', cursor: 'pointer', marginTop: '12px' }}>
                 {editando ? 'Actualizar' : 'Guardar'}
               </button>
