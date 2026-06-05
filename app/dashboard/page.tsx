@@ -101,7 +101,6 @@ export default function DashboardPage() {
 
                 // Si no hay datos guardados del encargado, se le fuerza a ir al formulario de perfil
                 if (errCheck || !liceoCheck || !liceoCheck.encargado_nombres) {
-                  // ✅ CORREGIDO: Ruta completa al formulario de perfil
                   router.replace(`/admin/registrar-colegio/perfil?id=${liceoIdDetectado}`);
                   return;
                 }
@@ -182,11 +181,12 @@ export default function DashboardPage() {
           <DashboardCoordinador userEmail={userEmail} idLiceo={idLiceo} />
         )}
 
-        {role === 'jefe_especialidad' && (
+        {/* ✅ Ahora también muestra el dashboard de jefe para rol 'profesor' */}
+        {(role === 'jefe_especialidad' || role === 'profesor') && (
           <DashboardJefeEspecialidad userEmail={userEmail} idLiceo={idLiceo} />
         )}
 
-        {role !== 'super_root' && role !== 'coordinador' && role !== 'administrador_liceo' && role !== 'jefe_especialidad' && (
+        {role !== 'super_root' && role !== 'coordinador' && role !== 'administrador_liceo' && role !== 'jefe_especialidad' && role !== 'profesor' && (
           <DashboardEstudiante role={role} />
         )}
       </div>
