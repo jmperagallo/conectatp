@@ -1,4 +1,4 @@
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 
@@ -6,18 +6,36 @@ export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get('code');
 
+  // Crear cliente de Supabase con cookies
+  const cookieStore = cookies();
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value;
+        },
+        set(name: string, value: string, options: any) {
+          cookieStore.set({ name, value, ...options });
+        },
+        remove(name: string, options: any) {
+          cookieStore.set({ name, value: '', ...options });
+        },
+      },
+    }
+  );
+
+  // Si hay código, intercambiarlo por una sesión
   if (code) {
-    const supabase = createRouteHandlerClient({ cookies });
-    // Intercambiar el código por una sesión
     await supabase.auth.exchangeCodeForSession(code);
   }
 
   // Obtener el usuario autenticado
-  const supabase = createRouteHandlerClient({ cookies });
   const { data: { user } } = await supabase.auth.getUser();
 
   if (user?.email) {
-    // Validar que el correo esté en lista_blanca
+    // Verificar si el correo está en la lista blanca
     const { data: autorizado, error } = await supabase
       .from('lista_blanca')
       .select('correo')
@@ -25,12 +43,12 @@ export async function GET(request: Request) {
       .maybeSingle();
 
     if (!autorizado || error) {
-      // No autorizado: cerrar sesión y redirigir a login con error
+      // No autorizado: cerrar sesión y redirigir con error
       await supabase.auth.signOut();
       return NextResponse.redirect(new URL('/login?error=no-autorizado', request.url));
     }
   }
 
-  // Redirigir al dashboard
+  // Redirigir al dashboard si está autorizado
   return NextResponse.redirect(new URL('/dashboard', request.url));
 }
