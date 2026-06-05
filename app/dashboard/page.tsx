@@ -135,7 +135,7 @@ export default function DashboardPage() {
       <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc', fontFamily: 'system-ui, sans-serif', gap: '12px' }}>
         <div style={{ width: '40px', height: '40px', border: '4px solid #e2e8f0', borderTop: '4px solid #1a365d', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
         <p style={{ fontSize: '14px', fontWeight: '600', color: '#1a365d', margin: 0 }}>Cargando Conecta TP...</p>
-        <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+        <style>{`@keyframes spin { 100% { transform: rotate(360deg); } }`}</style>
       </div>
     );
   }
@@ -181,7 +181,7 @@ export default function DashboardPage() {
           <DashboardCoordinador userEmail={userEmail} idLiceo={idLiceo} />
         )}
 
-        {/* AHORA TAMBIÉN MUESTRA EL DASHBOARD DE JEFE PARA ROL 'profesor' */}
+        {/* 🔥 CORREGIDO: ahora también muestra el componente para rol 'profesor' */}
         {(role === 'jefe_especialidad' || role === 'profesor') && (
           <DashboardJefeEspecialidad userEmail={userEmail} idLiceo={idLiceo} />
         )}
