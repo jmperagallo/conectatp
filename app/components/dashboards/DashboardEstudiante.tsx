@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { 
   User, Briefcase, GraduationCap, Heart, Globe, Camera, 
-  Edit3, Github, Linkedin, Mail, Phone, MapPin, Calendar, 
+  Edit3, Code, Share2, Mail, Phone, MapPin, Calendar, 
   Award, Star, TrendingUp, CheckCircle, Upload, Video, 
   FileText, ExternalLink, Plus, X, Save, Trash2 
 } from 'lucide-react';
@@ -46,20 +46,11 @@ export default function DashboardEstudiante({ userEmail }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [editando, setEditando] = useState(false);
   const [editForm, setEditForm] = useState<any>({});
-  const [nuevoItemFormacion, setNuevoItemFormacion] = useState({ institucion: '', titulo: '', anio: '' });
-  const [nuevoItemExperiencia, setNuevoItemExperiencia] = useState({ empresa: '', cargo: '', anio_inicio: '', anio_fin: '' });
-  const [nuevaHabilidad, setNuevaHabilidad] = useState('');
-  const [nuevoInteres, setNuevoInteres] = useState('');
-  const [nuevoPasatiempo, setNuevoPasatiempo] = useState('');
-  const [videoFile, setVideoFile] = useState<File | null>(null);
-  const [subiendoVideo, setSubiendoVideo] = useState(false);
-  
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  // Cargar perfil
   useEffect(() => {
     if (!userEmail) return;
     const cargarPerfil = async () => {
@@ -82,7 +73,6 @@ export default function DashboardEstudiante({ userEmail }: Props) {
     cargarPerfil();
   }, [userEmail, supabase]);
 
-  // Guardar cambios
   const guardarCambios = async () => {
     if (!perfil) return;
     const { error } = await supabase
@@ -98,13 +88,6 @@ export default function DashboardEstudiante({ userEmail }: Props) {
     }
   };
 
-  // Subir foto (usando el hook existente, pero simplificado)
-  const subirFoto = async (file: File) => {
-    // Implementar con useR2Upload (por brevedad, simulo)
-    console.log('Subir foto', file);
-  };
-
-  // Componente de barra de progreso circular (estilo Duolingo)
   const CircularProgress = ({ percentage }: { percentage: number }) => {
     const radius = 40;
     const circumference = 2 * Math.PI * radius;
@@ -126,7 +109,7 @@ export default function DashboardEstudiante({ userEmail }: Props) {
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-6">
-      {/* Cabecera principal */}
+      {/* Cabecera */}
       <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 mb-8">
         <div className="bg-gradient-to-r from-[#1a365d] to-[#f97316] h-32"></div>
         <div className="relative px-6 pb-6">
@@ -163,7 +146,6 @@ export default function DashboardEstudiante({ userEmail }: Props) {
       </div>
 
       {editando ? (
-        // Formulario de edición completo
         <div className="bg-white rounded-xl shadow-md p-6 mb-8">
           <h2 className="text-xl font-bold text-[#1a365d] mb-4">Editar perfil</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -181,9 +163,7 @@ export default function DashboardEstudiante({ userEmail }: Props) {
           </div>
         </div>
       ) : (
-        // Vista de perfil (estilo LinkedIn)
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Columna izquierda */}
           <div className="space-y-6">
             <div className="bg-white rounded-xl shadow-sm border p-5">
               <h3 className="font-semibold text-lg text-[#1a365d] flex items-center gap-2"><User size={18} /> Datos personales</h3>
@@ -195,15 +175,13 @@ export default function DashboardEstudiante({ userEmail }: Props) {
               </div>
             </div>
             <div className="bg-white rounded-xl shadow-sm border p-5">
-              <h3 className="font-semibold text-lg text-[#1a365d] flex items-center gap-2"><Globe size={18} /> Redes</h3>
+              <h3 className="font-semibold text-lg text-[#1a365d] flex items-center gap-2"><Share2 size={18} /> Redes</h3>
               <div className="mt-3 space-y-2">
-                {perfil.linkedin_url ? <a href={perfil.linkedin_url} target="_blank" className="flex items-center gap-2 text-sm text-blue-600 hover:underline"><Linkedin size={16} /> LinkedIn</a> : <p className="text-sm text-gray-400">No agregado</p>}
-                {perfil.github_url ? <a href={perfil.github_url} target="_blank" className="flex items-center gap-2 text-sm text-gray-800 hover:underline"><Github size={16} /> GitHub</a> : <p className="text-sm text-gray-400">No agregado</p>}
+                {perfil.linkedin_url ? <a href={perfil.linkedin_url} target="_blank" className="flex items-center gap-2 text-sm text-blue-600 hover:underline"><Share2 size={16} /> LinkedIn</a> : <p className="text-sm text-gray-400">No agregado</p>}
+                {perfil.github_url ? <a href={perfil.github_url} target="_blank" className="flex items-center gap-2 text-sm text-gray-800 hover:underline"><Code size={16} /> GitHub</a> : <p className="text-sm text-gray-400">No agregado</p>}
               </div>
             </div>
           </div>
-
-          {/* Columna central */}
           <div className="space-y-6 lg:col-span-2">
             <div className="bg-white rounded-xl shadow-sm border p-5">
               <h3 className="font-semibold text-lg text-[#1a365d] flex items-center gap-2"><FileText size={18} /> Sobre mí</h3>
