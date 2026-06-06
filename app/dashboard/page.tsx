@@ -90,7 +90,7 @@ export default function DashboardPage() {
             const liceoIdDetectado = data.id_liceo || null;
             setIdLiceo(liceoIdDetectado);
 
-            // 🚨 ESCUDO DE CONTROL: Validación de Primer Ingreso para Coordinación
+            // Validación de primer ingreso para coordinador/administrador_liceo
             if (data.rol === 'coordinador' || data.rol === 'administrador_liceo') {
               if (liceoIdDetectado) {
                 const { data: liceoCheck, error: errCheck } = await supabase
@@ -99,14 +99,12 @@ export default function DashboardPage() {
                   .eq('id', liceoIdDetectado)
                   .single();
 
-                // Si no hay datos guardados del encargado, se le fuerza a ir al formulario de perfil
                 if (errCheck || !liceoCheck || !liceoCheck.encargado_nombres) {
                   router.replace(`/admin/registrar-colegio/perfil?id=${liceoIdDetectado}`);
                   return;
                 }
               }
             }
-
           } else {
             setRole('estudiante');
           }
@@ -181,13 +179,13 @@ export default function DashboardPage() {
           <DashboardCoordinador userEmail={userEmail} idLiceo={idLiceo} />
         )}
 
-        {/* 🔥 CORREGIDO: ahora también muestra el componente para rol 'profesor' */}
         {(role === 'jefe_especialidad' || role === 'profesor') && (
           <DashboardJefeEspecialidad userEmail={userEmail} idLiceo={idLiceo} />
         )}
 
-        {role !== 'super_root' && role !== 'coordinador' && role !== 'administrador_liceo' && role !== 'jefe_especialidad' && role !== 'profesor' && (
-          <DashboardEstudiante role={role} />
+        {/* ✅ ESTUDIANTE: ahora recibe userEmail y idLiceo */}
+        {role === 'estudiante' && (
+          <DashboardEstudiante userEmail={userEmail} idLiceo={idLiceo} />
         )}
       </div>
 
