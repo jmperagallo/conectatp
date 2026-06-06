@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { 
   User, Briefcase, GraduationCap, Heart, Globe, Camera, 
-  Edit3, Code, Share2, Mail, Phone, MapPin, Calendar, 
+  Edit3, Github, Linkedin, Mail, Phone, MapPin, Calendar, 
   Award, Star, TrendingUp, CheckCircle, Upload, Video, 
   FileText, ExternalLink, Plus, X, Save, Trash2 
 } from 'lucide-react';
@@ -108,17 +108,17 @@ export default function DashboardEstudiante({ userEmail }: Props) {
   const progreso = perfil.completitud_perfil || 0;
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-6">
+    <div className="max-w-7xl mx-auto px-4 py-8">
       {/* Cabecera */}
-      <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100 mb-8">
-        <div className="bg-gradient-to-r from-[#1a365d] to-[#f97316] h-32"></div>
-        <div className="relative px-6 pb-6">
-          <div className="flex flex-col md:flex-row gap-6 -mt-16 items-end md:items-end">
+      <div className="relative bg-gradient-to-r from-[#1a365d] to-[#2563eb] rounded-3xl shadow-xl overflow-hidden mb-8">
+        <div className="absolute inset-0 bg-black/20 backdrop-blur-sm"></div>
+        <div className="relative p-6 md:p-8 text-white">
+          <div className="flex flex-col md:flex-row gap-8 items-center md:items-start">
             <div className="relative">
               {perfil.foto_url ? (
                 <img src={perfil.foto_url} alt="Foto" className="w-32 h-32 rounded-full border-4 border-white shadow-lg object-cover" />
               ) : (
-                <div className="w-32 h-32 rounded-full bg-gradient-to-br from-[#1a365d] to-[#f97316] flex items-center justify-center border-4 border-white shadow-lg">
+                <div className="w-32 h-32 rounded-full bg-gradient-to-br from-[#f97316] to-[#ffb347] flex items-center justify-center border-4 border-white shadow-lg">
                   <User size={48} className="text-white" />
                 </div>
               )}
@@ -126,10 +126,10 @@ export default function DashboardEstudiante({ userEmail }: Props) {
                 <Camera size={18} className="text-gray-600" />
               </button>
             </div>
-            <div className="flex-1">
-              <h1 className="text-2xl md:text-3xl font-bold text-gray-800">{perfil.nombre} {perfil.apellido_paterno} {perfil.apellido_materno}</h1>
+            <div className="flex-1 text-center md:text-left">
+              <h1 className="text-2xl md:text-3xl font-bold">{perfil.nombre} {perfil.apellido_paterno} {perfil.apellido_materno}</h1>
               <p className="text-[#f97316] font-semibold">{perfil.especialidad}</p>
-              <div className="flex flex-wrap gap-2 mt-2 text-sm text-gray-500">
+              <div className="flex flex-wrap gap-2 mt-2 text-sm text-gray-200">
                 <span className="flex items-center gap-1"><Mail size={14} /> {perfil.correo}</span>
                 {perfil.telefono && <span className="flex items-center gap-1"><Phone size={14} /> {perfil.telefono}</span>}
                 {perfil.direccion && <span className="flex items-center gap-1"><MapPin size={14} /> {perfil.direccion}</span>}
@@ -137,7 +137,7 @@ export default function DashboardEstudiante({ userEmail }: Props) {
             </div>
             <div className="flex flex-col items-center">
               <CircularProgress percentage={progreso} />
-              <button onClick={() => setEditando(!editando)} className="mt-2 bg-gray-100 hover:bg-gray-200 px-4 py-1.5 rounded-full text-sm font-medium flex items-center gap-1">
+              <button onClick={() => setEditando(!editando)} className="mt-2 bg-white/20 backdrop-blur-md hover:bg-white/30 text-white px-4 py-1.5 rounded-full text-sm font-medium flex items-center gap-1">
                 <Edit3 size={14} /> {editando ? 'Cancelar' : 'Editar perfil'}
               </button>
             </div>
@@ -163,10 +163,11 @@ export default function DashboardEstudiante({ userEmail }: Props) {
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Columna izquierda */}
           <div className="space-y-6">
-            <div className="bg-white rounded-xl shadow-sm border p-5">
-              <h3 className="font-semibold text-lg text-[#1a365d] flex items-center gap-2"><User size={18} /> Datos personales</h3>
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-100/50 p-6 transition-all duration-300 hover:shadow-xl">
+              <h3 className="font-semibold text-lg text-[#1a365d] flex items-center gap-2 mb-4"><User size={18} /> Datos personales</h3>
               <div className="mt-3 space-y-2 text-sm">
                 <p><span className="font-medium">Teléfono:</span> {perfil.telefono || '—'}</p>
                 <p><span className="font-medium">Fecha nac.:</span> {perfil.fecha_nacimiento || '—'}</p>
@@ -174,33 +175,35 @@ export default function DashboardEstudiante({ userEmail }: Props) {
                 <p><span className="font-medium">Tel. emergencia:</span> {perfil.telefono_emergencia || '—'}</p>
               </div>
             </div>
-            <div className="bg-white rounded-xl shadow-sm border p-5">
-              <h3 className="font-semibold text-lg text-[#1a365d] flex items-center gap-2"><Share2 size={18} /> Redes</h3>
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-100/50 p-6 transition-all duration-300 hover:shadow-xl">
+              <h3 className="font-semibold text-lg text-[#1a365d] flex items-center gap-2 mb-4"><Share2 size={18} /> Redes</h3>
               <div className="mt-3 space-y-2">
                 {perfil.linkedin_url ? <a href={perfil.linkedin_url} target="_blank" className="flex items-center gap-2 text-sm text-blue-600 hover:underline"><Share2 size={16} /> LinkedIn</a> : <p className="text-sm text-gray-400">No agregado</p>}
                 {perfil.github_url ? <a href={perfil.github_url} target="_blank" className="flex items-center gap-2 text-sm text-gray-800 hover:underline"><Code size={16} /> GitHub</a> : <p className="text-sm text-gray-400">No agregado</p>}
               </div>
             </div>
           </div>
+
+          {/* Columna central */}
           <div className="space-y-6 lg:col-span-2">
-            <div className="bg-white rounded-xl shadow-sm border p-5">
-              <h3 className="font-semibold text-lg text-[#1a365d] flex items-center gap-2"><FileText size={18} /> Sobre mí</h3>
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-100/50 p-6 transition-all duration-300 hover:shadow-xl">
+              <h3 className="font-semibold text-lg text-[#1a365d] flex items-center gap-2 mb-4"><FileText size={18} /> Sobre mí</h3>
               <p className="mt-2 text-gray-700">{perfil.biografia || 'Sin biografía aún.'}</p>
             </div>
-            <div className="bg-white rounded-xl shadow-sm border p-5">
-              <h3 className="font-semibold text-lg text-[#1a365d] flex items-center gap-2"><GraduationCap size={18} /> Formación académica</h3>
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-100/50 p-6 transition-all duration-300 hover:shadow-xl">
+              <h3 className="font-semibold text-lg text-[#1a365d] flex items-center gap-2 mb-4"><GraduationCap size={18} /> Formación académica</h3>
               {perfil.formacion?.length ? perfil.formacion.map((f, i) => <div key={i} className="border-l-2 border-[#f97316] pl-3 py-1 mt-2"><p className="font-medium">{f.titulo}</p><p className="text-sm text-gray-500">{f.institucion} • {f.anio}</p></div>) : <p className="text-gray-500">No hay formación agregada.</p>}
             </div>
-            <div className="bg-white rounded-xl shadow-sm border p-5">
-              <h3 className="font-semibold text-lg text-[#1a365d] flex items-center gap-2"><Briefcase size={18} /> Experiencia</h3>
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-100/50 p-6 transition-all duration-300 hover:shadow-xl">
+              <h3 className="font-semibold text-lg text-[#1a365d] flex items-center gap-2 mb-4"><Briefcase size={18} /> Experiencia</h3>
               {perfil.experiencia_laboral?.length ? perfil.experiencia_laboral.map((e, i) => <div key={i} className="border-l-2 border-[#f97316] pl-3 py-1 mt-2"><p className="font-medium">{e.cargo} en {e.empresa}</p><p className="text-sm text-gray-500">{e.anio_inicio} - {e.anio_fin || 'actualidad'}</p></div>) : <p className="text-gray-500">Sin experiencia registrada.</p>}
             </div>
-            <div className="bg-white rounded-xl shadow-sm border p-5">
-              <h3 className="font-semibold text-lg text-[#1a365d] flex items-center gap-2"><Award size={18} /> Habilidades</h3>
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-100/50 p-6 transition-all duration-300 hover:shadow-xl">
+              <h3 className="font-semibold text-lg text-[#1a365d] flex items-center gap-2 mb-4"><Award size={18} /> Habilidades</h3>
               <div className="flex flex-wrap gap-2 mt-2">{perfil.habilidades?.map(h => <span key={h} className="bg-gray-100 px-3 py-1 rounded-full text-sm">{h}</span>)}</div>
             </div>
-            <div className="bg-white rounded-xl shadow-sm border p-5">
-              <h3 className="font-semibold text-lg text-[#1a365d] flex items-center gap-2"><Heart size={18} /> Intereses y pasatiempos</h3>
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-100/50 p-6 transition-all duration-300 hover:shadow-xl">
+              <h3 className="font-semibold text-lg text-[#1a365d] flex items-center gap-2 mb-4"><Heart size={18} /> Intereses y pasatiempos</h3>
               <div className="flex flex-wrap gap-2 mt-2">
                 {perfil.intereses?.map(i => <span key={i} className="bg-pink-50 text-pink-700 px-3 py-1 rounded-full text-sm">❤️ {i}</span>)}
                 {perfil.pasatiempos?.map(p => <span key={p} className="bg-green-50 text-green-700 px-3 py-1 rounded-full text-sm">🎮 {p}</span>)}
