@@ -1,58 +1,40 @@
-import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
-import { NextResponse } from 'next/server';
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
+import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
-  // Definir aquí la URL de origen y la URL de redirección original
-  const requestUrl = new URL(request.url);
-  const code = requestUrl.searchParams.get('code');
-  const next = requestUrl.searchParams.get('next') ?? '/dashboard';
+  const requestUrl = new URL(request.url)
+  const code = requestUrl.searchParams.get('code')
 
-  // Crear cliente de Supabase con cookies
-  const cookieStore = await cookies(); // <-- Agregar 'await' aquí
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
-        },
-        set(name: string, value: string, options: any) {
-          cookieStore.set({ name, value, ...options });
-        },
-        remove(name: string, options: any) {
-          cookieStore.set({ name, value: '', ...options });
-        },
-      },
-    }
-  );
-
-  // Intercambiar el código de autorización por una sesión
   if (code) {
-    await supabase.auth.exchangeCodeForSession(code);
-  }
+    const cookieStore = cookies()
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          // The `getAll` method is used to read the cookies on the request
+          getAll() {
+            return cookieStore.getAll()
+          },
+          // The `setAll` method is used to set the cookies on the response
+          setAll(cookiesToSet) {
+            cookiesToSet.forEach(({ name, value, options }) => {
+              cookieStore.set({ name, value, ...options })
+            })
+          },
+        },
+      }
+    )
 
-  // Obtener el usuario autenticado
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (user?.email) {
-    // Verificar si el correo está en la lista blanca
-    const { data: autorizado, error } = await supabase
-      .from('lista_blanca')
-      .select('correo')
-      .eq('correo', user.email.toLowerCase())
-      .maybeSingle();
-
-    if (!autorizado || error) {
-      // No autorizado: cerrar sesión y redirigir con error
-      await supabase.auth.signOut();
-      const origin = requestUrl.origin;
-      return NextResponse.redirect(new URL('/login?error=no-autorizado', origin));
+    // This will exchange the code for a session and set the cookies
+    const { error } = await supabase.auth.exchangeCodeForSession(code)
+    if (error) {
+      console.error('Error exchanging code for session:', error)
+      return NextResponse.redirect(`${requestUrl.origin}/login?error=Auth callback failed`)
     }
   }
 
-  // Redirigir al dashboard si está autorizado
-  const origin = requestUrl.origin;
-  return NextResponse.redirect(new URL('/dashboard', origin));
+  // Finally, redirect the user to the dashboard
+  return NextResponse.redirect(`${requestUrl.origin}/dashboard`)
 }
