@@ -98,7 +98,7 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
     cargarDatos();
   }, [userEmail, idLiceo, supabase]);
 
-  // Validación de RUT
+  // Validación de RUT chileno
   const validarRut = (rut: string): boolean => {
     const clean = rut.replace(/[^0-9kK]/g, '').toUpperCase();
     if (clean.length < 2) return false;
@@ -128,34 +128,6 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
     return formateado + '-' + dv;
   };
 
-  // Función para enviar correo de invitación a un estudiante
-  const enviarInvitacion = async (estudiante: { nombre: string; apellido_paterno: string; correo: string; especialidad: string }) => {
-    const passwordTemporal = `CNX-${Math.floor(1000 + Math.random() * 9000)}-TP`;
-    try {
-      const res = await fetch("/api/enviar-invitacion-estudiante", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          correo: estudiante.correo,
-          nombre: estudiante.nombre,
-          apellido: estudiante.apellido_paterno,
-          institucion: profesor?.institucion || "Institución",
-          especialidad: estudiante.especialidad,
-          passwordTemporal
-        })
-      });
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || "Error al enviar correo");
-      }
-      console.log(`✅ Invitación enviada a ${estudiante.correo}`);
-      return true;
-    } catch (err) {
-      console.error(`❌ Error enviando correo a ${estudiante.correo}:`, err);
-      return false;
-    }
-  };
-
   const handleAbrirModal = (estudiante?: Estudiante) => {
     if (estudiante) {
       setEditando(estudiante);
@@ -183,49 +155,49 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
     setModalAbierto(true);
   };
 
+  // Guardar estudiante individual mediante el endpoint
   const handleGuardarEstudiante = async () => {
     if (!idLiceo) return;
     if (!validarRut(formData.rut)) {
       alert('RUT inválido. Ejemplo: 12345678-5');
       return;
     }
-    const payload = {
-      id_liceo: idLiceo,
+
+    const estudiantes = [{
       nombre: formData.nombre,
       apellido_paterno: formData.apellido_paterno,
       apellido_materno: formData.apellido_materno,
-      rut: formData.rut.replace(/[^0-9kK]/g, '').toUpperCase(),
+      rut: formData.rut,
       correo: formData.correo,
-      telefono: formData.telefono,
-      especialidad: formData.especialidad,
-      perfil_completo: false,
-    };
-    let error;
-    let nuevoId = null;
-    if (editando) {
-      const { error: err } = await supabase.from('estudiantes').update(payload).eq('id', editando.id);
-      error = err;
-    } else {
-      const { data, error: err } = await supabase.from('estudiantes').insert(payload).select();
-      error = err;
-      if (data && data[0]) nuevoId = data[0].id;
-    }
-    if (error) {
-      alert(`Error: ${error.message}`);
-    } else {
-      alert(editando ? 'Estudiante actualizado' : 'Estudiante agregado');
-      // Enviar correo solo si es nuevo
-      if (!editando) {
-        const enviado = await enviarInvitacion({
-          nombre: formData.nombre,
-          apellido_paterno: formData.apellido_paterno,
-          correo: formData.correo,
-          especialidad: formData.especialidad
-        });
-        if (!enviado) alert("Estudiante guardado, pero hubo un error al enviar el correo. Reintentará más tarde.");
+      telefono: formData.telefono
+    }];
+
+    setSubiendo(true);
+    try {
+      const res = await fetch('/api/registrar-estudiante', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          estudiantes,
+          idLiceo,
+          especialidad: formData.especialidad,
+          institucion: profesor?.institucion
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      if (data.resultados[0].success) {
+        alert('✅ Estudiante registrado exitosamente (correo enviado)');
+        setModalAbierto(false);
+        cargarEstudiantes();
+      } else {
+        alert(`❌ Error: ${data.resultados[0].error}`);
       }
-      setModalAbierto(false);
-      cargarEstudiantes();
+    } catch (err: any) {
+      alert(`❌ Error: ${err.message}`);
+    } finally {
+      setSubiendo(false);
     }
   };
 
@@ -237,7 +209,7 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
     }
   };
 
-  // Descargar plantilla Excel (sin cambios)
+  // Descargar plantilla Excel
   const descargarPlantilla = () => {
     const datosEjemplo = [
       ['Nombres', 'Apellido Paterno', 'Apellido Materno', 'RUT', 'Correo Electrónico', 'Teléfono'],
@@ -268,7 +240,7 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
     XLSX.writeFile(wb, `plantilla_estudiantes_${profesor?.especialidad || 'general'}.xlsx`);
   };
 
-  // Procesar Excel (con envío de correos)
+  // Procesar archivo Excel (solo lectura y validación)
   const procesarExcel = async (file: File) => {
     return new Promise<{ estudiantes: any[]; errores: any[] }>((resolve) => {
       const reader = new FileReader();
@@ -314,23 +286,28 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
             continue;
           }
           estudiantes.push({
-            id_liceo: idLiceo,
             nombre,
             apellido_paterno: apellidoPaterno,
             apellido_materno: apellidoMaterno,
-            rut: rut.replace(/[^0-9kK]/g, '').toUpperCase(),
+            rut,
             correo: correo.toLowerCase(),
-            telefono: telefono,
-            especialidad: profesor?.especialidad,
-            perfil_completo: false,
+            telefono
           });
         }
-        resolve({ estudiantes, errores });
+        // Límite de 500 estudiantes por carga
+        const MAX_FILAS = 500;
+        if (estudiantes.length > MAX_FILAS) {
+          errores.push({ fila: 0, error: `El archivo tiene ${estudiantes.length} estudiantes. El máximo por carga es ${MAX_FILAS}. Por favor, divide el archivo.` });
+          resolve({ estudiantes: [], errores });
+        } else {
+          resolve({ estudiantes, errores });
+        }
       };
       reader.readAsArrayBuffer(file);
     });
   };
 
+  // Carga masiva usando el endpoint
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -339,36 +316,48 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
       alert('Solo se permiten archivos Excel (.xlsx o .xls)');
       return;
     }
+    
     setSubiendo(true);
     setResultadoCarga(null);
+    
     try {
       const { estudiantes: estudiantesData, errores } = await procesarExcel(file);
+      
       if (estudiantesData.length === 0) {
         alert('No hay estudiantes válidos para cargar');
         if (errores.length) setResultadoCarga({ ok: 0, errors: errores });
+        setSubiendo(false);
         return;
       }
-      const { error: insertError, data: inserted } = await supabase
-        .from('estudiantes')
-        .upsert(estudiantesData, { onConflict: 'rut', returning: 'representation' });
-      if (insertError) throw new Error(insertError.message);
       
-      // Enviar correos a los estudiantes insertados (excluyendo duplicados)
-      const enviados = [];
-      for (const est of estudiantesData) {
-        const enviado = await enviarInvitacion({
-          nombre: est.nombre,
-          apellido_paterno: est.apellido_paterno,
-          correo: est.correo,
-          especialidad: est.especialidad
-        });
-        if (enviado) enviados.push(est.correo);
-        await new Promise(r => setTimeout(r, 500)); // evitar sobrecarga del SMTP
+      const confirmar = window.confirm(`Se encontraron ${estudiantesData.length} estudiantes listos para cargar. ¿Deseas continuar?`);
+      if (!confirmar) {
+        setSubiendo(false);
+        return;
       }
-      setResultadoCarga({ ok: estudiantesData.length, errors: errores });
+      
+      const res = await fetch('/api/registrar-estudiante', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          estudiantes: estudiantesData,
+          idLiceo,
+          especialidad: profesor?.especialidad,
+          institucion: profesor?.institucion
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      
+      const exitosos = data.resultados.filter(r => r.success).length;
+      const fallidos = data.resultados.length - exitosos;
+      
+      setResultadoCarga({ ok: exitosos, errors: [] });
       await cargarEstudiantes();
-      alert(`✅ ${estudiantesData.length} estudiantes cargados. Correos enviados a ${enviados.length} de ellos.`);
+      
+      alert(`✅ ${exitosos} estudiantes registrados exitosamente (correos enviados).\n❌ Fallidos: ${fallidos}`);
     } catch (err: any) {
+      console.error(err);
       alert(`Error al cargar: ${err.message}`);
     } finally {
       setSubiendo(false);
@@ -391,7 +380,7 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
         <p style={{ color: '#94a3b8', fontSize: '12px' }}>Sesión: {userEmail}</p>
       </div>
 
-      {/* Tarjetas de estadísticas (igual) */}
+      {/* Tarjetas de estadísticas */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px', marginBottom: '32px' }}>
         <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
           <div style={{ fontSize: '32px', fontWeight: '800', color: '#1a365d' }}>{estudiantes.length}</div>
@@ -403,7 +392,7 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
         </div>
       </div>
 
-      {/* Botones (igual) */}
+      {/* Botones */}
       <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginBottom: '20px', flexWrap: 'wrap' }}>
         <button onClick={descargarPlantilla} style={{ backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <Download size={18} /> Descargar Plantilla Excel
@@ -433,7 +422,7 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
         </div>
       )}
 
-      {/* Tabla (igual) */}
+      {/* Tabla de estudiantes */}
       <div style={{ overflowX: 'auto', backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
@@ -449,7 +438,9 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
           <tbody>
             {estudiantes.length === 0 ? (
               <tr>
-                <td colSpan={6} style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>No hay estudiantes registrados aún. Usa la carga masiva o agrega uno manualmente.</td>
+                <td colSpan={6} style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
+                  No hay estudiantes registrados aún. Usa la carga masiva o agrega uno manualmente.
+                </td>
               </tr>
             ) : (
               estudiantes.map((est) => (
@@ -470,7 +461,7 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
         </table>
       </div>
 
-      {/* Modal (igual) */}
+      {/* Modal para agregar/editar estudiante */}
       {modalAbierto && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div style={{ backgroundColor: 'white', borderRadius: '16px', padding: '24px', width: '500px', maxWidth: '90%' }}>
@@ -486,8 +477,8 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
               <input type="email" placeholder="Correo Electrónico *" value={formData.correo} onChange={e => setFormData({...formData, correo: e.target.value})} style={{ padding: '10px', border: '1px solid #ccc', borderRadius: '8px' }} />
               <input type="text" placeholder="Teléfono (opcional)" value={formData.telefono} onChange={e => setFormData({...formData, telefono: e.target.value})} style={{ padding: '10px', border: '1px solid #ccc', borderRadius: '8px' }} />
               <input type="text" placeholder="Especialidad" value={formData.especialidad} disabled style={{ padding: '10px', border: '1px solid #ccc', borderRadius: '8px', backgroundColor: '#f3f4f6' }} />
-              <button onClick={handleGuardarEstudiante} style={{ backgroundColor: '#f97316', color: 'white', border: 'none', padding: '12px', borderRadius: '8px', cursor: 'pointer', marginTop: '12px' }}>
-                {editando ? 'Actualizar' : 'Guardar'}
+              <button onClick={handleGuardarEstudiante} disabled={subiendo} style={{ backgroundColor: '#f97316', color: 'white', border: 'none', padding: '12px', borderRadius: '8px', cursor: subiendo ? 'not-allowed' : 'pointer', marginTop: '12px' }}>
+                {subiendo ? 'Guardando...' : (editando ? 'Actualizar' : 'Guardar')}
               </button>
             </div>
           </div>
