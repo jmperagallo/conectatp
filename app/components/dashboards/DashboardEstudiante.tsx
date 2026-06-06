@@ -32,10 +32,10 @@ interface EstudiantePerfil {
 
 interface Props {
   userEmail: string | null;
-  idLiceo: string | null;
+  idLiceo: string | null; // opcional, no se usará porque lo obtenemos de lista_blanca
 }
 
-export default function DashboardEstudiante({ userEmail, idLiceo }: Props) {
+export default function DashboardEstudiante({ userEmail }: Props) {
   const [perfil, setPerfil] = useState<EstudiantePerfil | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorDetallado, setErrorDetallado] = useState<string | null>(null);
@@ -52,29 +52,7 @@ export default function DashboardEstudiante({ userEmail, idLiceo }: Props) {
       const correoNormalizado = userEmail.toLowerCase().trim();
       console.log('🔍 Buscando/creando perfil para:', correoNormalizado);
 
-      // 1. Intentar obtener el perfil de estudiantes
-      let { data, error } = await supabase
-        .from('estudiantes')
-        .select('*')
-        .eq('correo', correoNormalizado)
-        .maybeSingle(); // usar maybeSingle para evitar error si no existe
-
-      if (error) {
-        console.error('Error al consultar estudiantes:', error);
-        setErrorDetallado(`Error en consulta: ${error.message}`);
-        setLoading(false);
-        return;
-      }
-
-      if (data) {
-        console.log('✅ Perfil encontrado en estudiantes');
-        setPerfil(data);
-        setLoading(false);
-        return;
-      }
-
-      // 2. No existe, intentar crear desde lista_blanca
-      console.log('📝 Perfil no encontrado, creando desde lista_blanca...');
+      // 1. Obtener datos desde lista_blanca (necesarios para crear el perfil)
       const { data: listaData, error: listaError } = await supabase
         .from('lista_blanca')
         .select('nombre, apellido_paterno, apellido_materno, especialidad, id_liceo')
@@ -82,7 +60,7 @@ export default function DashboardEstudiante({ userEmail, idLiceo }: Props) {
         .maybeSingle();
 
       if (listaError) {
-        console.error('Error consultando lista_blanca:', listaError);
+        console.error('❌ Error consultando lista_blanca:', listaError);
         setErrorDetallado(`Error en lista_blanca: ${listaError.message}`);
         setLoading(false);
         return;
@@ -102,13 +80,35 @@ export default function DashboardEstudiante({ userEmail, idLiceo }: Props) {
         return;
       }
 
-      // Preparar nuevo perfil
+      // 2. Buscar si ya existe en estudiantes
+      let { data: estudianteExistente, error: buscarError } = await supabase
+        .from('estudiantes')
+        .select('*')
+        .eq('correo', correoNormalizado)
+        .maybeSingle();
+
+      if (buscarError && buscarError.code !== 'PGRST116') {
+        console.error('❌ Error al buscar estudiante:', buscarError);
+        setErrorDetallado(`Error en consulta: ${buscarError.message}`);
+        setLoading(false);
+        return;
+      }
+
+      if (estudianteExistente) {
+        console.log('✅ Perfil encontrado en estudiantes');
+        setPerfil(estudianteExistente);
+        setLoading(false);
+        return;
+      }
+
+      // 3. No existe, crear nuevo perfil
+      console.log('📝 Creando nuevo perfil de estudiante...');
       const nuevoPerfil = {
         correo: correoNormalizado,
         nombre: listaData.nombre,
         apellido_paterno: listaData.apellido_paterno,
         apellido_materno: listaData.apellido_materno || '',
-        rut: '0', // temporal, luego se pedirá
+        rut: '0', // temporal, luego el estudiante podrá actualizarlo
         telefono: '',
         especialidad: listaData.especialidad,
         id_liceo: listaData.id_liceo,
@@ -129,7 +129,7 @@ export default function DashboardEstudiante({ userEmail, idLiceo }: Props) {
         completitud_perfil: 0
       };
 
-      console.log('📤 Insertando en estudiantes:', nuevoPerfil);
+      console.log('📤 Enviando a Supabase:', nuevoPerfil);
       const { data: newData, error: insertError } = await supabase
         .from('estudiantes')
         .insert(nuevoPerfil)
@@ -206,7 +206,7 @@ export default function DashboardEstudiante({ userEmail, idLiceo }: Props) {
         </div>
       </div>
 
-      {/* Grid de secciones (placeholders) */}
+      {/* Grid de secciones (igual que antes) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="space-y-6">
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
