@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
-import { User, Briefcase, GraduationCap, Heart, Globe, Settings, Camera, Video } from 'lucide-react';
+import { User, Briefcase, GraduationCap, Heart, Globe, Camera } from 'lucide-react';
 
 interface EstudiantePerfil {
   id: string;
@@ -38,6 +38,7 @@ interface Props {
 export default function DashboardEstudiante({ userEmail, idLiceo }: Props) {
   const [perfil, setPerfil] = useState<EstudiantePerfil | null>(null);
   const [loading, setLoading] = useState(true);
+  const [errorDetallado, setErrorDetallado] = useState<string | null>(null);
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -47,74 +48,103 @@ export default function DashboardEstudiante({ userEmail, idLiceo }: Props) {
     if (!userEmail) return;
     const cargarOCrearPerfil = async () => {
       setLoading(true);
+      setErrorDetallado(null);
+      const correoNormalizado = userEmail.toLowerCase().trim();
+      console.log('🔍 Buscando/creando perfil para:', correoNormalizado);
+
       // 1. Intentar obtener el perfil de estudiantes
       let { data, error } = await supabase
         .from('estudiantes')
         .select('*')
-        .eq('correo', userEmail.toLowerCase())
+        .eq('correo', correoNormalizado)
+        .maybeSingle(); // usar maybeSingle para evitar error si no existe
+
+      if (error) {
+        console.error('Error al consultar estudiantes:', error);
+        setErrorDetallado(`Error en consulta: ${error.message}`);
+        setLoading(false);
+        return;
+      }
+
+      if (data) {
+        console.log('✅ Perfil encontrado en estudiantes');
+        setPerfil(data);
+        setLoading(false);
+        return;
+      }
+
+      // 2. No existe, intentar crear desde lista_blanca
+      console.log('📝 Perfil no encontrado, creando desde lista_blanca...');
+      const { data: listaData, error: listaError } = await supabase
+        .from('lista_blanca')
+        .select('nombre, apellido_paterno, apellido_materno, especialidad, id_liceo')
+        .eq('correo', correoNormalizado)
+        .maybeSingle();
+
+      if (listaError) {
+        console.error('Error consultando lista_blanca:', listaError);
+        setErrorDetallado(`Error en lista_blanca: ${listaError.message}`);
+        setLoading(false);
+        return;
+      }
+
+      if (!listaData) {
+        console.error('❌ Estudiante no encontrado en lista_blanca');
+        setErrorDetallado('No estás registrado como estudiante en la plataforma. Contacta a tu jefe de especialidad.');
+        setLoading(false);
+        return;
+      }
+
+      if (!listaData.id_liceo) {
+        console.error('❌ El registro en lista_blanca no tiene id_liceo');
+        setErrorDetallado('Tu cuenta no está vinculada a una institución. Contacta al administrador.');
+        setLoading(false);
+        return;
+      }
+
+      // Preparar nuevo perfil
+      const nuevoPerfil = {
+        correo: correoNormalizado,
+        nombre: listaData.nombre,
+        apellido_paterno: listaData.apellido_paterno,
+        apellido_materno: listaData.apellido_materno || '',
+        rut: '0', // temporal, luego se pedirá
+        telefono: '',
+        especialidad: listaData.especialidad,
+        id_liceo: listaData.id_liceo,
+        foto_url: null,
+        video_presentacion_url: null,
+        biografia: null,
+        intereses: [],
+        pasatiempos: [],
+        formacion: [],
+        experiencia_laboral: [],
+        habilidades: [],
+        linkedin_url: null,
+        github_url: null,
+        fecha_nacimiento: null,
+        telefono_emergencia: null,
+        direccion: null,
+        perfil_publico: false,
+        completitud_perfil: 0
+      };
+
+      console.log('📤 Insertando en estudiantes:', nuevoPerfil);
+      const { data: newData, error: insertError } = await supabase
+        .from('estudiantes')
+        .insert(nuevoPerfil)
+        .select()
         .single();
 
-      if (error && error.code === 'PGRST116') {
-        // No existe el perfil, intentar crearlo desde lista_blanca
-        console.log('Perfil no encontrado, creando desde lista_blanca...');
-        const { data: listaData, error: listaError } = await supabase
-          .from('lista_blanca')
-          .select('nombre, apellido_paterno, apellido_materno, especialidad, id_liceo')
-          .eq('correo', userEmail.toLowerCase())
-          .single();
-
-        if (listaError || !listaData) {
-          console.error('Error obteniendo datos de lista_blanca', listaError);
-          setPerfil(null);
-          setLoading(false);
-          return;
-        }
-
-        // Crear el perfil en estudiantes
-        const nuevoPerfil = {
-          correo: userEmail.toLowerCase(),
-          nombre: listaData.nombre,
-          apellido_paterno: listaData.apellido_paterno,
-          apellido_materno: listaData.apellido_materno || '',
-          rut: '', // pendiente, lo pediremos después
-          telefono: '',
-          especialidad: listaData.especialidad,
-          id_liceo: listaData.id_liceo,
-          foto_url: null,
-          video_presentacion_url: null,
-          biografia: null,
-          intereses: [],
-          pasatiempos: [],
-          formacion: [],
-          experiencia_laboral: [],
-          habilidades: [],
-          linkedin_url: null,
-          github_url: null,
-          fecha_nacimiento: null,
-          telefono_emergencia: null,
-          direccion: null,
-          perfil_publico: false,
-          completitud_perfil: 0
-        };
-
-        const { data: newData, error: insertError } = await supabase
-          .from('estudiantes')
-          .insert(nuevoPerfil)
-          .select()
-          .single();
-
-        if (insertError) {
-          console.error('Error creando perfil de estudiante', insertError);
-          setPerfil(null);
-        } else {
-          setPerfil(newData);
-        }
-      } else if (error) {
-        console.error('Error cargando perfil', error);
-        setPerfil(null);
-      } else {
-        setPerfil(data);
+      if (insertError) {
+        console.error('❌ Error al insertar en estudiantes:', insertError);
+        setErrorDetallado(`Error al crear perfil: ${insertError.message}`);
+        setLoading(false);
+        return;
       }
+
+      console.log('✅ Perfil creado exitosamente');
+      setPerfil(newData);
       setLoading(false);
     };
     cargarOCrearPerfil();
@@ -128,24 +158,24 @@ export default function DashboardEstudiante({ userEmail, idLiceo }: Props) {
     );
   }
 
-  if (!perfil) {
+  if (errorDetallado || !perfil) {
     return (
       <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-        <p className="text-red-600">No se pudo cargar o crear tu perfil. Contacta al administrador.</p>
+        <p className="text-red-600 mb-2">No se pudo cargar o crear tu perfil.</p>
+        {errorDetallado && <p className="text-sm text-red-500">Motivo: {errorDetallado}</p>}
+        <p className="text-xs text-gray-500 mt-4">Contacta al administrador si el problema persiste.</p>
       </div>
     );
   }
 
-  // Calcular progreso (puedes calcularlo según campos llenos, por ahora usamos el campo completitud_perfil)
   const progreso = perfil.completitud_perfil || 0;
   const colorProgreso = progreso < 30 ? '#ef4444' : progreso < 70 ? '#f97316' : '#10b981';
 
   return (
     <div className="max-w-5xl mx-auto">
-      {/* Cabecera con foto, nombre y barra de progreso */}
+      {/* Cabecera */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
         <div className="flex flex-col md:flex-row gap-6 items-start md:items-center">
-          {/* Foto de perfil */}
           <div className="relative">
             {perfil.foto_url ? (
               <img src={perfil.foto_url} alt="Foto" className="w-28 h-28 rounded-full object-cover border-4 border-[#f97316]" />
@@ -158,13 +188,11 @@ export default function DashboardEstudiante({ userEmail, idLiceo }: Props) {
               <Camera size={16} className="text-gray-600" />
             </button>
           </div>
-          {/* Datos básicos */}
           <div className="flex-1">
             <h1 className="text-2xl font-bold text-[#1a365d]">{perfil.nombre} {perfil.apellido_paterno} {perfil.apellido_materno}</h1>
             <p className="text-gray-600">{perfil.especialidad}</p>
             <p className="text-sm text-gray-500">{perfil.correo} • {perfil.telefono || 'Sin teléfono'}</p>
           </div>
-          {/* Barra de progreso */}
           <div className="w-full md:w-64">
             <div className="flex justify-between text-xs text-gray-500 mb-1">
               <span>Completitud del perfil</span>
@@ -178,7 +206,7 @@ export default function DashboardEstudiante({ userEmail, idLiceo }: Props) {
         </div>
       </div>
 
-      {/* Grid de secciones (por ahora solo placeholders) */}
+      {/* Grid de secciones (placeholders) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="space-y-6">
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
@@ -197,7 +225,7 @@ export default function DashboardEstudiante({ userEmail, idLiceo }: Props) {
           </div>
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
             <h2 className="text-lg font-semibold text-[#1a365d] flex items-center gap-2 mb-4"><GraduationCap size={20} /> Formación Académica</h2>
-            <p className="text-gray-600 text-sm">Próximamente: agregar estudios, cursos, certificaciones.</p>
+            <p className="text-gray-600 text-sm">Próximamente: estudios, cursos, certificaciones.</p>
           </div>
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
             <h2 className="text-lg font-semibold text-[#1a365d] flex items-center gap-2 mb-4"><Briefcase size={20} /> Experiencia Laboral</h2>
@@ -207,11 +235,11 @@ export default function DashboardEstudiante({ userEmail, idLiceo }: Props) {
         <div className="space-y-6">
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
             <h2 className="text-lg font-semibold text-[#1a365d] flex items-center gap-2 mb-4">⚙️ Habilidades</h2>
-            <p className="text-gray-600 text-sm">Próximamente: lista de habilidades técnicas y blandas.</p>
+            <p className="text-gray-600 text-sm">Próximamente: habilidades técnicas y blandas.</p>
           </div>
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
             <h2 className="text-lg font-semibold text-[#1a365d] flex items-center gap-2 mb-4"><Heart size={20} /> Intereses y Pasatiempos</h2>
-            <p className="text-gray-600 text-sm">Próximamente: lo que te apasiona fuera del estudio.</p>
+            <p className="text-gray-600 text-sm">Próximamente: lo que te apasiona.</p>
           </div>
         </div>
       </div>
