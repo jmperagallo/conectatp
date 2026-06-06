@@ -46,7 +46,6 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  // Obtener nombre de la institución
   const cargarInstitucion = async () => {
     if (!idLiceo) return;
     const { data, error } = await supabase
@@ -73,7 +72,6 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
     if (!userEmail || !idLiceo) return;
     const cargarDatos = async () => {
       setLoading(true);
-      // Obtener datos del profesor
       const { data: profe, error: errProfe } = await supabase
         .from('lista_blanca')
         .select('nombre, apellido_paterno, especialidad')
@@ -82,7 +80,6 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
       if (errProfe) console.error(errProfe);
       else setProfesor({ ...profe, institucion: '' });
       
-      // Cargar nombre de la institución
       await cargarInstitucion();
       
       if (profe?.especialidad) {
@@ -98,7 +95,6 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
     cargarDatos();
   }, [userEmail, idLiceo, supabase]);
 
-  // Validación de RUT chileno
   const validarRut = (rut: string): boolean => {
     const clean = rut.replace(/[^0-9kK]/g, '').toUpperCase();
     if (clean.length < 2) return false;
@@ -155,11 +151,14 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
     setModalAbierto(true);
   };
 
-  // Guardar estudiante individual mediante el endpoint
   const handleGuardarEstudiante = async () => {
     if (!idLiceo) return;
     if (!validarRut(formData.rut)) {
       alert('RUT inválido. Ejemplo: 12345678-5');
+      return;
+    }
+    if (!formData.especialidad) {
+      alert('Falta la especialidad. Contacta al administrador.');
       return;
     }
 
@@ -167,7 +166,7 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
       nombre: formData.nombre,
       apellido_paterno: formData.apellido_paterno,
       apellido_materno: formData.apellido_materno,
-      rut: formData.rut,
+      rut: formData.rut.replace(/[^0-9kK]/g, '').toUpperCase(),
       correo: formData.correo,
       telefono: formData.telefono
     }];
@@ -209,7 +208,6 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
     }
   };
 
-  // Descargar plantilla Excel
   const descargarPlantilla = () => {
     const datosEjemplo = [
       ['Nombres', 'Apellido Paterno', 'Apellido Materno', 'RUT', 'Correo Electrónico', 'Teléfono'],
@@ -240,7 +238,6 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
     XLSX.writeFile(wb, `plantilla_estudiantes_${profesor?.especialidad || 'general'}.xlsx`);
   };
 
-  // Procesar archivo Excel (solo lectura y validación)
   const procesarExcel = async (file: File) => {
     return new Promise<{ estudiantes: any[]; errores: any[] }>((resolve) => {
       const reader = new FileReader();
@@ -273,7 +270,7 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
           const nombre = (row[0] || '').trim();
           const apellidoPaterno = (row[1] || '').trim();
           const apellidoMaterno = (row[2] || '').trim();
-          const rut = (row[3] || '').trim();
+          let rut = (row[3] || '').trim();
           const correo = (row[4] || '').trim();
           const telefono = (row[5] || '').trim();
           
@@ -281,7 +278,9 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
             errores.push({ fila: i+1, error: 'Faltan campos obligatorios (Nombres, Apellido Paterno, RUT, Correo)' });
             continue;
           }
-          if (!validarRut(rut)) {
+          // Limpiar RUT y validar
+          const rutLimpio = rut.replace(/[^0-9kK]/g, '').toUpperCase();
+          if (!validarRut(rutLimpio)) {
             errores.push({ fila: i+1, error: `RUT inválido: "${rut}". Ejemplo: 12345678-5` });
             continue;
           }
@@ -289,12 +288,11 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
             nombre,
             apellido_paterno: apellidoPaterno,
             apellido_materno: apellidoMaterno,
-            rut,
+            rut: rutLimpio,
             correo: correo.toLowerCase(),
             telefono
           });
         }
-        // Límite de 500 estudiantes por carga
         const MAX_FILAS = 500;
         if (estudiantes.length > MAX_FILAS) {
           errores.push({ fila: 0, error: `El archivo tiene ${estudiantes.length} estudiantes. El máximo por carga es ${MAX_FILAS}. Por favor, divide el archivo.` });
@@ -307,13 +305,18 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
     });
   };
 
-  // Carga masiva usando el endpoint
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
     const extension = file.name.split('.').pop()?.toLowerCase();
     if (extension !== 'xlsx' && extension !== 'xls') {
       alert('Solo se permiten archivos Excel (.xlsx o .xls)');
+      return;
+    }
+    
+    // Validar que el profesor tenga especialidad
+    if (!profesor?.especialidad) {
+      alert('Error: No se ha detectado tu especialidad. Contacta al administrador.');
       return;
     }
     
@@ -336,26 +339,45 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
         return;
       }
       
+      // Log para ver qué se envía
+      console.log('📤 Enviando al endpoint:', {
+        estudiantes: estudiantesData,
+        idLiceo,
+        especialidad: profesor.especialidad,
+        institucion: profesor.institucion
+      });
+      
       const res = await fetch('/api/registrar-estudiante', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           estudiantes: estudiantesData,
           idLiceo,
-          especialidad: profesor?.especialidad,
-          institucion: profesor?.institucion
+          especialidad: profesor.especialidad,
+          institucion: profesor.institucion
         })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       
       const exitosos = data.resultados.filter(r => r.success).length;
-      const fallidos = data.resultados.length - exitosos;
+      const fallidos = data.resultados.filter(r => !r.success).length;
+      
+      // Mostrar detalles de los fallidos
+      if (fallidos > 0) {
+        const primerosErrores = data.resultados.filter(r => !r.success).slice(0, 3);
+        let mensajeError = `❌ Fallaron ${fallidos} estudiante(s).\n\n`;
+        primerosErrores.forEach((err: any) => {
+          mensajeError += `• ${err.correo || 'sin correo'}: ${err.error}\n`;
+        });
+        if (fallidos > 3) mensajeError += `\n... y ${fallidos - 3} más.`;
+        alert(mensajeError);
+      } else {
+        alert(`✅ ${exitosos} estudiantes registrados exitosamente (correos enviados).`);
+      }
       
       setResultadoCarga({ ok: exitosos, errors: [] });
       await cargarEstudiantes();
-      
-      alert(`✅ ${exitosos} estudiantes registrados exitosamente (correos enviados).\n❌ Fallidos: ${fallidos}`);
     } catch (err: any) {
       console.error(err);
       alert(`Error al cargar: ${err.message}`);
@@ -380,7 +402,6 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
         <p style={{ color: '#94a3b8', fontSize: '12px' }}>Sesión: {userEmail}</p>
       </div>
 
-      {/* Tarjetas de estadísticas */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px', marginBottom: '32px' }}>
         <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
           <div style={{ fontSize: '32px', fontWeight: '800', color: '#1a365d' }}>{estudiantes.length}</div>
@@ -392,7 +413,6 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
         </div>
       </div>
 
-      {/* Botones */}
       <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginBottom: '20px', flexWrap: 'wrap' }}>
         <button onClick={descargarPlantilla} style={{ backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <Download size={18} /> Descargar Plantilla Excel
@@ -407,7 +427,6 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
         </button>
       </div>
 
-      {/* Resultado de carga */}
       {resultadoCarga && (
         <div style={{ marginBottom: '20px', padding: '12px', borderRadius: '8px', backgroundColor: resultadoCarga.errors.length ? '#fee2e2' : '#d1fae5', color: resultadoCarga.errors.length ? '#991b1b' : '#065f46' }}>
           <strong>{resultadoCarga.ok} estudiantes cargados exitosamente.</strong>
@@ -422,7 +441,6 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
         </div>
       )}
 
-      {/* Tabla de estudiantes */}
       <div style={{ overflowX: 'auto', backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
@@ -461,7 +479,6 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
         </table>
       </div>
 
-      {/* Modal para agregar/editar estudiante */}
       {modalAbierto && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div style={{ backgroundColor: 'white', borderRadius: '16px', padding: '24px', width: '500px', maxWidth: '90%' }}>
