@@ -487,5 +487,3 @@ export default function DashboardJefeEspecialidad({ userEmail, idLiceo }: Props)
     </div>
   );
 }
-
-// Hola...
