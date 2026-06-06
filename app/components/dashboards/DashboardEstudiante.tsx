@@ -45,21 +45,79 @@ export default function DashboardEstudiante({ userEmail, idLiceo }: Props) {
 
   useEffect(() => {
     if (!userEmail) return;
-    const cargarPerfil = async () => {
+    const cargarOCrearPerfil = async () => {
       setLoading(true);
-      const { data, error } = await supabase
+      // 1. Intentar obtener el perfil de estudiantes
+      let { data, error } = await supabase
         .from('estudiantes')
         .select('*')
         .eq('correo', userEmail.toLowerCase())
         .single();
-      if (error) {
-        console.error('Error cargando perfil:', error);
+
+      if (error && error.code === 'PGRST116') {
+        // No existe el perfil, intentar crearlo desde lista_blanca
+        console.log('Perfil no encontrado, creando desde lista_blanca...');
+        const { data: listaData, error: listaError } = await supabase
+          .from('lista_blanca')
+          .select('nombre, apellido_paterno, apellido_materno, especialidad, id_liceo')
+          .eq('correo', userEmail.toLowerCase())
+          .single();
+
+        if (listaError || !listaData) {
+          console.error('Error obteniendo datos de lista_blanca', listaError);
+          setPerfil(null);
+          setLoading(false);
+          return;
+        }
+
+        // Crear el perfil en estudiantes
+        const nuevoPerfil = {
+          correo: userEmail.toLowerCase(),
+          nombre: listaData.nombre,
+          apellido_paterno: listaData.apellido_paterno,
+          apellido_materno: listaData.apellido_materno || '',
+          rut: '', // pendiente, lo pediremos después
+          telefono: '',
+          especialidad: listaData.especialidad,
+          id_liceo: listaData.id_liceo,
+          foto_url: null,
+          video_presentacion_url: null,
+          biografia: null,
+          intereses: [],
+          pasatiempos: [],
+          formacion: [],
+          experiencia_laboral: [],
+          habilidades: [],
+          linkedin_url: null,
+          github_url: null,
+          fecha_nacimiento: null,
+          telefono_emergencia: null,
+          direccion: null,
+          perfil_publico: false,
+          completitud_perfil: 0
+        };
+
+        const { data: newData, error: insertError } = await supabase
+          .from('estudiantes')
+          .insert(nuevoPerfil)
+          .select()
+          .single();
+
+        if (insertError) {
+          console.error('Error creando perfil de estudiante', insertError);
+          setPerfil(null);
+        } else {
+          setPerfil(newData);
+        }
+      } else if (error) {
+        console.error('Error cargando perfil', error);
+        setPerfil(null);
       } else {
         setPerfil(data);
       }
       setLoading(false);
     };
-    cargarPerfil();
+    cargarOCrearPerfil();
   }, [userEmail, supabase]);
 
   if (loading) {
@@ -73,12 +131,12 @@ export default function DashboardEstudiante({ userEmail, idLiceo }: Props) {
   if (!perfil) {
     return (
       <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-        <p className="text-red-600">No se encontró tu perfil de estudiante. Contacta a tu jefe de especialidad.</p>
+        <p className="text-red-600">No se pudo cargar o crear tu perfil. Contacta al administrador.</p>
       </div>
     );
   }
 
-  // Calcular color de la barra de progreso según el porcentaje
+  // Calcular progreso (puedes calcularlo según campos llenos, por ahora usamos el campo completitud_perfil)
   const progreso = perfil.completitud_perfil || 0;
   const colorProgreso = progreso < 30 ? '#ef4444' : progreso < 70 ? '#f97316' : '#10b981';
 
@@ -120,59 +178,39 @@ export default function DashboardEstudiante({ userEmail, idLiceo }: Props) {
         </div>
       </div>
 
-      {/* Grid de secciones */}
+      {/* Grid de secciones (por ahora solo placeholders) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Columna izquierda - Datos personales y contacto */}
         <div className="space-y-6">
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-            <h2 className="text-lg font-semibold text-[#1a365d] flex items-center gap-2 mb-4">
-              <User size={20} /> Datos Personales
-            </h2>
+            <h2 className="text-lg font-semibold text-[#1a365d] flex items-center gap-2 mb-4"><User size={20} /> Datos Personales</h2>
             <p className="text-gray-600 text-sm">Próximamente: fecha de nacimiento, dirección, teléfono de emergencia.</p>
           </div>
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-            <h2 className="text-lg font-semibold text-[#1a365d] flex items-center gap-2 mb-4">
-              <Globe size={20} /> Redes y Enlaces
-            </h2>
+            <h2 className="text-lg font-semibold text-[#1a365d] flex items-center gap-2 mb-4"><Globe size={20} /> Redes y Enlaces</h2>
             <p className="text-gray-600 text-sm">Próximamente: LinkedIn, GitHub, portafolio.</p>
           </div>
         </div>
-
-        {/* Columna central - Biografía, habilidades, formación, experiencia */}
         <div className="space-y-6">
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-            <h2 className="text-lg font-semibold text-[#1a365d] flex items-center gap-2 mb-4">
-              <User size={20} /> Sobre mí
-            </h2>
+            <h2 className="text-lg font-semibold text-[#1a365d] flex items-center gap-2 mb-4"><User size={20} /> Sobre mí</h2>
             <p className="text-gray-600 text-sm">Próximamente: biografía, video de presentación.</p>
           </div>
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-            <h2 className="text-lg font-semibold text-[#1a365d] flex items-center gap-2 mb-4">
-              <GraduationCap size={20} /> Formación Académica
-            </h2>
+            <h2 className="text-lg font-semibold text-[#1a365d] flex items-center gap-2 mb-4"><GraduationCap size={20} /> Formación Académica</h2>
             <p className="text-gray-600 text-sm">Próximamente: agregar estudios, cursos, certificaciones.</p>
           </div>
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-            <h2 className="text-lg font-semibold text-[#1a365d] flex items-center gap-2 mb-4">
-              <Briefcase size={20} /> Experiencia Laboral
-            </h2>
+            <h2 className="text-lg font-semibold text-[#1a365d] flex items-center gap-2 mb-4"><Briefcase size={20} /> Experiencia Laboral</h2>
             <p className="text-gray-600 text-sm">Próximamente: prácticas, trabajos, voluntariado.</p>
           </div>
         </div>
-
-        {/* Columna derecha - Habilidades e intereses */}
         <div className="space-y-6">
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-            <h2 className="text-lg font-semibold text-[#1a365d] flex items-center gap-2 mb-4">
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">...</svg>
-              Habilidades
-            </h2>
+            <h2 className="text-lg font-semibold text-[#1a365d] flex items-center gap-2 mb-4">⚙️ Habilidades</h2>
             <p className="text-gray-600 text-sm">Próximamente: lista de habilidades técnicas y blandas.</p>
           </div>
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-            <h2 className="text-lg font-semibold text-[#1a365d] flex items-center gap-2 mb-4">
-              <Heart size={20} /> Intereses y Pasatiempos
-            </h2>
+            <h2 className="text-lg font-semibold text-[#1a365d] flex items-center gap-2 mb-4"><Heart size={20} /> Intereses y Pasatiempos</h2>
             <p className="text-gray-600 text-sm">Próximamente: lo que te apasiona fuera del estudio.</p>
           </div>
         </div>
