@@ -4,9 +4,8 @@ import { useEffect, useState } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { 
   User, Briefcase, GraduationCap, Heart, Globe, Camera, 
-  Edit3, Github, Linkedin, Mail, Phone, MapPin, Calendar, 
-  Award, Star, TrendingUp, CheckCircle, Upload, Video, 
-  FileText, ExternalLink, Plus, X, Save, Trash2 
+  Edit3, Code, Share2, Mail, Phone, MapPin, Calendar, 
+  Award, FileText, CheckCircle, Loader2 
 } from 'lucide-react';
 
 interface EstudiantePerfil {
@@ -14,12 +13,10 @@ interface EstudiantePerfil {
   nombre: string;
   apellido_paterno: string;
   apellido_materno: string;
-  rut: string;
   correo: string;
   telefono: string;
   especialidad: string;
   foto_url: string | null;
-  video_presentacion_url: string | null;
   biografia: string | null;
   intereses: string[];
   pasatiempos: string[];
@@ -31,21 +28,16 @@ interface EstudiantePerfil {
   fecha_nacimiento: string | null;
   telefono_emergencia: string | null;
   direccion: string | null;
-  perfil_publico: boolean;
   completitud_perfil: number;
 }
 
-interface Props {
-  userEmail: string | null;
-  idLiceo: string | null;
-}
-
-export default function DashboardEstudiante({ userEmail }: Props) {
+export default function DashboardEstudiante({ userEmail }: { userEmail: string | null; idLiceo: string | null }) {
   const [perfil, setPerfil] = useState<EstudiantePerfil | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editando, setEditando] = useState(false);
   const [editForm, setEditForm] = useState<any>({});
+
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -54,21 +46,33 @@ export default function DashboardEstudiante({ userEmail }: Props) {
   useEffect(() => {
     if (!userEmail) return;
     const cargarPerfil = async () => {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('estudiantes')
-        .select('*')
-        .eq('correo', userEmail.toLowerCase())
-        .maybeSingle();
-      if (error) {
-        setError(error.message);
-      } else if (!data) {
-        setError('Perfil no encontrado');
-      } else {
-        setPerfil(data);
+      try {
+        setLoading(true);
+        const { data, error } = await supabase
+          .from('estudiantes')
+          .select('*')
+          .eq('correo', userEmail.toLowerCase())
+          .maybeSingle();
+
+        if (error) throw new Error(error.message);
+        if (!data) throw new Error('Perfil no encontrado');
+
+        // Asegurar que los arrays existan
+        setPerfil({
+          ...data,
+          intereses: data.intereses || [],
+          pasatiempos: data.pasatiempos || [],
+          formacion: data.formacion || [],
+          experiencia_laboral: data.experiencia_laboral || [],
+          habilidades: data.habilidades || [],
+        });
         setEditForm(data);
+      } catch (err: any) {
+        console.error(err);
+        setError(err.message);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
     cargarPerfil();
   }, [userEmail, supabase]);
@@ -82,12 +86,13 @@ export default function DashboardEstudiante({ userEmail }: Props) {
     if (error) {
       alert('Error al guardar: ' + error.message);
     } else {
-      setPerfil(editForm);
+      setPerfil({ ...perfil, ...editForm });
       setEditando(false);
       alert('Perfil actualizado');
     }
   };
 
+  // Barra de progreso circular
   const CircularProgress = ({ percentage }: { percentage: number }) => {
     const radius = 40;
     const circumference = 2 * Math.PI * radius;
@@ -101,9 +106,24 @@ export default function DashboardEstudiante({ userEmail }: Props) {
     );
   };
 
-  if (loading) return <div className="flex justify-center items-center py-20"><div className="w-10 h-10 border-4 border-gray-200 border-t-[#1a365d] rounded-full animate-spin"></div></div>;
-  if (error) return <div className="bg-red-100 p-6 rounded-xl text-red-700">Error: {error}</div>;
-  if (!perfil) return <div className="bg-yellow-100 p-6 rounded-xl">No se encontró el perfil.</div>;
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center py-20">
+        <Loader2 className="w-10 h-10 animate-spin text-[#1a365d]" />
+      </div>
+    );
+  }
+
+  if (error || !perfil) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
+        <p className="text-red-600">{error || 'Perfil no disponible'}</p>
+        <button onClick={() => window.location.reload()} className="mt-4 bg-[#1a365d] text-white px-4 py-2 rounded-lg">
+          Reintentar
+        </button>
+      </div>
+    );
+  }
 
   const progreso = perfil.completitud_perfil || 0;
 
@@ -166,43 +186,55 @@ export default function DashboardEstudiante({ userEmail }: Props) {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Columna izquierda */}
           <div className="space-y-6">
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-100/50 p-6 transition-all duration-300 hover:shadow-xl">
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-100/50 p-6">
               <h3 className="font-semibold text-lg text-[#1a365d] flex items-center gap-2 mb-4"><User size={18} /> Datos personales</h3>
-              <div className="mt-3 space-y-2 text-sm">
+              <div className="space-y-2 text-sm">
                 <p><span className="font-medium">Teléfono:</span> {perfil.telefono || '—'}</p>
                 <p><span className="font-medium">Fecha nac.:</span> {perfil.fecha_nacimiento || '—'}</p>
                 <p><span className="font-medium">Dirección:</span> {perfil.direccion || '—'}</p>
                 <p><span className="font-medium">Tel. emergencia:</span> {perfil.telefono_emergencia || '—'}</p>
               </div>
             </div>
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-100/50 p-6 transition-all duration-300 hover:shadow-xl">
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-100/50 p-6">
               <h3 className="font-semibold text-lg text-[#1a365d] flex items-center gap-2 mb-4"><Share2 size={18} /> Redes</h3>
-              <div className="mt-3 space-y-2">
-                {perfil.linkedin_url ? <a href={perfil.linkedin_url} target="_blank" className="flex items-center gap-2 text-sm text-blue-600 hover:underline"><Share2 size={16} /> LinkedIn</a> : <p className="text-sm text-gray-400">No agregado</p>}
-                {perfil.github_url ? <a href={perfil.github_url} target="_blank" className="flex items-center gap-2 text-sm text-gray-800 hover:underline"><Code size={16} /> GitHub</a> : <p className="text-sm text-gray-400">No agregado</p>}
+              <div className="space-y-2">
+                {perfil.linkedin_url ? <a href={perfil.linkedin_url} target="_blank" className="flex items-center gap-2 text-sm text-blue-600 hover:underline">LinkedIn</a> : <p className="text-sm text-gray-400">No agregado</p>}
+                {perfil.github_url ? <a href={perfil.github_url} target="_blank" className="flex items-center gap-2 text-sm text-gray-800 hover:underline">GitHub</a> : <p className="text-sm text-gray-400">No agregado</p>}
               </div>
             </div>
           </div>
 
           {/* Columna central */}
           <div className="space-y-6 lg:col-span-2">
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-100/50 p-6 transition-all duration-300 hover:shadow-xl">
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-100/50 p-6">
               <h3 className="font-semibold text-lg text-[#1a365d] flex items-center gap-2 mb-4"><FileText size={18} /> Sobre mí</h3>
-              <p className="mt-2 text-gray-700">{perfil.biografia || 'Sin biografía aún.'}</p>
+              <p className="text-gray-700">{perfil.biografia || 'Sin biografía aún.'}</p>
             </div>
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-100/50 p-6 transition-all duration-300 hover:shadow-xl">
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-100/50 p-6">
               <h3 className="font-semibold text-lg text-[#1a365d] flex items-center gap-2 mb-4"><GraduationCap size={18} /> Formación académica</h3>
-              {perfil.formacion?.length ? perfil.formacion.map((f, i) => <div key={i} className="border-l-2 border-[#f97316] pl-3 py-1 mt-2"><p className="font-medium">{f.titulo}</p><p className="text-sm text-gray-500">{f.institucion} • {f.anio}</p></div>) : <p className="text-gray-500">No hay formación agregada.</p>}
+              {perfil.formacion?.length ? perfil.formacion.map((f, i) => (
+                <div key={i} className="border-l-2 border-[#f97316] pl-3 py-1 mt-2">
+                  <p className="font-medium">{f.titulo}</p>
+                  <p className="text-sm text-gray-500">{f.institucion} • {f.anio}</p>
+                </div>
+              )) : <p className="text-gray-500">No hay formación agregada.</p>}
             </div>
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-100/50 p-6 transition-all duration-300 hover:shadow-xl">
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-100/50 p-6">
               <h3 className="font-semibold text-lg text-[#1a365d] flex items-center gap-2 mb-4"><Briefcase size={18} /> Experiencia</h3>
-              {perfil.experiencia_laboral?.length ? perfil.experiencia_laboral.map((e, i) => <div key={i} className="border-l-2 border-[#f97316] pl-3 py-1 mt-2"><p className="font-medium">{e.cargo} en {e.empresa}</p><p className="text-sm text-gray-500">{e.anio_inicio} - {e.anio_fin || 'actualidad'}</p></div>) : <p className="text-gray-500">Sin experiencia registrada.</p>}
+              {perfil.experiencia_laboral?.length ? perfil.experiencia_laboral.map((e, i) => (
+                <div key={i} className="border-l-2 border-[#f97316] pl-3 py-1 mt-2">
+                  <p className="font-medium">{e.cargo} en {e.empresa}</p>
+                  <p className="text-sm text-gray-500">{e.anio_inicio} - {e.anio_fin || 'actualidad'}</p>
+                </div>
+              )) : <p className="text-gray-500">Sin experiencia registrada.</p>}
             </div>
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-100/50 p-6 transition-all duration-300 hover:shadow-xl">
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-100/50 p-6">
               <h3 className="font-semibold text-lg text-[#1a365d] flex items-center gap-2 mb-4"><Award size={18} /> Habilidades</h3>
-              <div className="flex flex-wrap gap-2 mt-2">{perfil.habilidades?.map(h => <span key={h} className="bg-gray-100 px-3 py-1 rounded-full text-sm">{h}</span>)}</div>
+              <div className="flex flex-wrap gap-2 mt-2">
+                {perfil.habilidades?.map(h => <span key={h} className="bg-gray-100 px-3 py-1 rounded-full text-sm">{h}</span>)}
+              </div>
             </div>
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-100/50 p-6 transition-all duration-300 hover:shadow-xl">
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-100/50 p-6">
               <h3 className="font-semibold text-lg text-[#1a365d] flex items-center gap-2 mb-4"><Heart size={18} /> Intereses y pasatiempos</h3>
               <div className="flex flex-wrap gap-2 mt-2">
                 {perfil.intereses?.map(i => <span key={i} className="bg-pink-50 text-pink-700 px-3 py-1 rounded-full text-sm">❤️ {i}</span>)}
