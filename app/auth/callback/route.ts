@@ -3,11 +3,13 @@ import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 
 export async function GET(request: Request) {
+  // Definir aquí la URL de origen y la URL de redirección original
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get('code');
+  const next = requestUrl.searchParams.get('next') ?? '/dashboard';
 
   // Crear cliente de Supabase con cookies
-  const cookieStore = cookies();
+  const cookieStore = await cookies(); // <-- Agregar 'await' aquí
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -26,7 +28,7 @@ export async function GET(request: Request) {
     }
   );
 
-  // Si hay código, intercambiarlo por una sesión
+  // Intercambiar el código de autorización por una sesión
   if (code) {
     await supabase.auth.exchangeCodeForSession(code);
   }
@@ -45,10 +47,12 @@ export async function GET(request: Request) {
     if (!autorizado || error) {
       // No autorizado: cerrar sesión y redirigir con error
       await supabase.auth.signOut();
-      return NextResponse.redirect(new URL('/login?error=no-autorizado', request.url));
+      const origin = requestUrl.origin;
+      return NextResponse.redirect(new URL('/login?error=no-autorizado', origin));
     }
   }
 
   // Redirigir al dashboard si está autorizado
-  return NextResponse.redirect(new URL('/dashboard', request.url));
+  const origin = requestUrl.origin;
+  return NextResponse.redirect(new URL('/dashboard', origin));
 }
