@@ -1,3 +1,4 @@
+// app/api/r2-upload/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
@@ -19,7 +20,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Validaciones de archivo
-    const allowedFolders = ["logos", "videos", "documentos", "perfiles", "general"];
+    // ✅ AGREGADO 'fotos_perfil' a las carpetas permitidas
+    const allowedFolders = ["logos", "videos", "documentos", "perfiles", "general", "fotos_perfil"];
     if (!allowedFolders.includes(folder)) {
       return NextResponse.json({ success: false, error: "Carpeta no permitida" }, { status: 400 });
     }
