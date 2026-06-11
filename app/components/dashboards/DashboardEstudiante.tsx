@@ -3,12 +3,13 @@
 import { useState, useEffect } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { motion } from 'framer-motion';
+import { useR2Upload } from '@/hooks/useR2Upload';
 import BannerInstitucional from './estudiante/BannerInstitucional';
+import ProfileBanner from './estudiante/ProfileBanner';
 import LeftColumn from './estudiante/LeftColumn';
 import RightColumn from './estudiante/RightColumn';
 import EditProfileSidebar from './estudiante/EditProfileSidebar';
 import { EstudiantePerfil } from './estudiante/types';
-import { useR2Upload } from '@/hooks/useR2Upload';
 
 interface Props {
   userEmail: string | null;
@@ -20,16 +21,24 @@ export default function DashboardEstudiante({ userEmail, idLiceo: idLiceoProp }:
   const [idLiceoReal, setIdLiceoReal] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [uploadingBanner, setUploadingBanner] = useState(false);
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  const { uploadFile, uploading: uploadingPhoto } = useR2Upload({
+  const { uploadFile: uploadPhoto } = useR2Upload({
     folder: 'fotos_perfil',
     maxSizeMB: 2,
     onError: (err) => alert('Error al subir foto: ' + err),
+  });
+
+  const { uploadFile: uploadBanner } = useR2Upload({
+    folder: 'banners',
+    maxSizeMB: 2,
+    onError: (err) => alert('Error al subir banner: ' + err),
   });
 
   useEffect(() => {
@@ -79,44 +88,65 @@ export default function DashboardEstudiante({ userEmail, idLiceo: idLiceoProp }:
 
   const handleUploadPhoto = async (file: File) => {
     if (!perfil) return;
-    const newPhotoUrl = await uploadFile(file, perfil.foto_url || undefined);
+    setUploadingPhoto(true);
+    const newPhotoUrl = await uploadPhoto(file, perfil.foto_url || undefined);
     if (newPhotoUrl) {
       const { error } = await supabase
         .from('estudiantes')
         .update({ foto_url: newPhotoUrl })
         .eq('id', perfil.id);
-      if (error) {
-        alert('Error al guardar la foto: ' + error.message);
-      } else {
-        setPerfil({ ...perfil, foto_url: newPhotoUrl });
-        alert('¡Foto actualizada correctamente!');
-      }
+      if (!error) setPerfil({ ...perfil, foto_url: newPhotoUrl });
+      else alert('Error al guardar la foto');
     }
+    setUploadingPhoto(false);
   };
 
-  if (loading) return <div className="text-center p-10 text-slate-500">Cargando perfil...</div>;
+  const handleUploadBanner = async (file: File) => {
+    if (!perfil) return;
+    setUploadingBanner(true);
+    const newBannerUrl = await uploadBanner(file, perfil.banner_url || undefined);
+    if (newBannerUrl) {
+      const { error } = await supabase
+        .from('estudiantes')
+        .update({ banner_url: newBannerUrl })
+        .eq('id', perfil.id);
+      if (!error) setPerfil({ ...perfil, banner_url: newBannerUrl });
+      else alert('Error al guardar el banner');
+    }
+    setUploadingBanner(false);
+  };
+
+  if (loading) return <div className="text-center p-10 text-gray-500">Cargando perfil...</div>;
   if (!perfil) return <div className="text-center p-10 text-red-500">No se encontró el perfil.</div>;
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+      {/* Banner institucional */}
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
         <BannerInstitucional idLiceo={idLiceoReal} />
       </motion.div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+      {/* Banner de perfil (imagen de fondo + foto grande) */}
+      <ProfileBanner
+        perfil={perfil}
+        onEdit={() => setIsEditOpen(true)}
+        onUploadPhoto={handleUploadPhoto}
+        uploadingPhoto={uploadingPhoto}
+        onUploadBanner={handleUploadBanner}
+        uploadingBanner={uploadingBanner}
+      />
+
+      {/* Columnas principales (contacto + experiencia, formación, habilidades, etc.) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         <div className="lg:col-span-4">
-          <LeftColumn
-            perfil={perfil}
-            onEdit={() => setIsEditOpen(true)}
-            onUploadPhoto={handleUploadPhoto}
-            uploadingPhoto={uploadingPhoto}
-          />
+          <LeftColumn perfil={perfil} />
         </div>
         <div className="lg:col-span-8">
           <RightColumn perfil={perfil} />
         </div>
       </div>
 
+      {/* Sidebar de edición (ya lo tienes, solo lo usamos) */}
       <EditProfileSidebar
         isOpen={isEditOpen}
         onClose={() => setIsEditOpen(false)}
